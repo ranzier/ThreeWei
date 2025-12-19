@@ -7,6 +7,7 @@ data = [['90310', (-0.45, -0.45, 0.0)], ['90311', (0.45, -0.45, 0.0)], ['90910',
         ['111210', (-0.843, -0.843, 7.364)], ['111211', (0.843, -0.843, 7.364)], ['110320', (-0.982, -0.982, 9.928)], ['110321', (0.982, -0.982, 9.928)], ['121510', (-1.031, -1.031, 10.843)], ['121511', (1.031, -1.031, 10.843)]]
 
 jiedian, ganjian = xintrans.work(r"D:\Sanwei\zuobiao\DanJia\1E2-SDJ", data)
+# jiedian, ganjian = xintrans.work(r"D:\Sanwei\zuobiao\DanJia\J1", data)
 print(jiedian)
 print(ganjian)
 

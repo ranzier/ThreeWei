@@ -109,7 +109,7 @@ def dist_z(p1, p2):
 
 def compute_l1_B(coordinatesBottom_data, drawing_id):
     """
-    自动计算俯视图中的 l1 和 l2 杆件编号。
+    自动计算底视图中的 l1 和 l2 杆件编号。
 
     返回:
         l1, l2 （两个int编号）
@@ -236,6 +236,7 @@ def trans(file_path, drawing_id, data1):
     with open(file_path, 'r', encoding='utf-8') as f:
         content = f.read()
 
+    # 获取二维坐标点
     namespace = {}
     exec(content, namespace)
     coordinatesFront_data = namespace.get('coordinatesFront_data', {})
@@ -244,9 +245,10 @@ def trans(file_path, drawing_id, data1):
 
     yuzhi = 50#是否在直线上距离阈值
 
+    # 将塔身组传来的担架与塔身相交的端点，一共16个端点，每两个担架有4个端点，所以将16个端点转成四组，每组4个
     data = transform_data(data1)
 
-    # 分组处理
+    # 将16个端点按照x轴的正负进行分组，【【【担架1的上端点】，【担架1的下端点】】，【【担架2的上端点】，【担架2的下端点】】，【【担架3的上端点】，【担架3的下端点】】，【】，【】...】
     pj = []
     for array in data:
         positive_group = []
@@ -262,18 +264,16 @@ def trans(file_path, drawing_id, data1):
         pj.append(negative_group)
 
     # print("pj =", pj)
-    # print(f"\n=== 第 {drawing_id} 号担架 pj 结构 ===")
-    # print("本担架上拼接点组:", pj[drawing_id - 1][0])
-    # print("本担架下拼接点组:", pj[drawing_id - 1][1])
 
 
 
-
-    # 输出结果
+    # node1_id就是101、201、301...，然后再×100：10100、20100、30100...
     node1_id = (drawing_id * 100 + 1) * 100
+    # node2_id就是103、203、303...，然后再×100：10300、20300、30300...
     node2_id = (drawing_id * 100 + 3) * 100
 
     # 底面是仰视图：也就是生成3、4、5、6、7、8号担架
+    # 这个判断语句是：如果101、201、301、401在底视图的二维坐标数据里面
     if(drawing_id * 100 + 1 in coordinatesBottom_data):
         l1 = compute_l1_B(coordinatesBottom_data, drawing_id)
         node3_id = (drawing_id * 100 + l1) * 100
@@ -285,23 +285,23 @@ def trans(file_path, drawing_id, data1):
         end_01y = coordinatesBottom_data[drawing_id * 100 + 1][1][1]
         end_02x = coordinatesBottom_data[drawing_id * 100 + 2][1][0]
         end_02y = coordinatesBottom_data[drawing_id * 100 + 2][1][1]
-        midr = ((end_01x + end_02x) / 2, (end_01y + end_02y) / 2)
-        midl = ((start_01x + start_02x) / 2, (start_01y + start_02y) / 2)
-        h = dist_points(midl, midr)
+        midr = ((end_01x + end_02x) / 2, (end_01y + end_02y) / 2) # 计算301和302两个右端点的中点
+        midl = ((start_01x + start_02x) / 2, (start_01y + start_02y) / 2)  # 计算301和302两个左端点的中点
+        h = dist_points(midl, midr)  # 计算左中点到右中点的距离
         p_01l = (start_01x, start_01y)
-        a1 = dist_points(p_01l, midl)
-        shiji = abs(pj[drawing_id - 1][1][1][1])
-        bili = shiji / a1
+        a1 = dist_points(p_01l, midl)   # 计算301左端点到左中点的距离
+        shiji = abs(pj[drawing_id - 1][1][1][1])  # 计算担架3与塔身相加的下端点的三维x坐标的值，也就是实际值
+        bili = shiji / a1 # 计算实际值/像素值的比例
         p_01r = (end_01x, end_01y)
         a2 = dist_points(p_01r, midr)
 
 
         #生成尖点
-        if(pj[drawing_id - 1][1][1][0] > 0):
+        if(pj[drawing_id - 1][1][1][0] > 0): # if里面生成右边担架的尖点
             newx = pj[drawing_id - 1][1][1][0] + h * bili
             newy = -a2 * bili
             newz = pj[drawing_id - 1][1][1][2]
-        else:
+        else:  # else生成左边担架的尖点
             newx = pj[drawing_id - 1][1][1][0] - h * bili
             newy = -a2 * bili
             newz = pj[drawing_id - 1][1][1][2]
@@ -329,50 +329,55 @@ def trans(file_path, drawing_id, data1):
         rod_101_points = coordinatesFront_data[rod_101_id]
         rod_103_points = coordinatesFront_data[rod_103_id]
 
-        # 提取参考杆件的所有端点
+        # 正视图以301、303两个杆件为参考杆件
         ref_points_101 = rod_101_points
         ref_points_103 = rod_103_points
 
         mi = 199999 #二类杆件的起始编号
 
         # 遍历所有杆件
+        # rod_id：杆件编号（如 301、302、303 …），points：该杆件的两个端点（二维）
         for rod_id, points in coordinatesFront_data.items():
-            if rod_id in [rod_101_id, rod_103_id]:
+            if rod_id in [rod_101_id, rod_103_id]:  # 如果是301、303杆件就跳过
                 continue
-            flag1 = 0
+            flag1 = 0 # flag1 用来统计该杆件有多少端点靠近参考杆件
             for i, point in enumerate(points):
                 distance_to_101 = dist_point_to_line(point, ref_points_101[0], ref_points_101[1])
                 distance_to_103 = dist_point_to_line(point, ref_points_103[0], ref_points_103[1])
-                if(distance_to_103 < yuzhi or distance_to_101 < yuzhi):
+                if(distance_to_103 < yuzhi or distance_to_101 < yuzhi): # 如果端点只要靠近任意一根参考杆，flag1就加1
                     flag1 += 1
-            if flag1 == 2:
+            if flag1 == 2: # 该杆件的两个端点都靠近参考杆件
                 intersection_101 = line_intersection(points, rod_101_points)
-                mi = min(mi, rod_id)
+                mi = min(mi, rod_id) # 记录最小杆件编号
                 if intersection_101 is not None:
-                    intersections_101.append(intersection_101)
+                    intersections_101.append(intersection_101) # 求杆件与 301 的交点坐标
 
-                # 计算目标杆件与103杆件的交点
+                # 计算目标杆件与303杆件的交点坐标
                 intersection_103 = line_intersection(points, rod_103_points)
                 if intersection_103 is not None:
                     intersections_103.append(intersection_103)
+        # 对在301杆件上的交点这个数组的元素进行排序，按照二维坐标的x轴从小到大进行排序
         if (pj[drawing_id - 1][1][1][0] > 0):
             intersections_101.sort(key=lambda point: point[0])
         else:
             intersections_101.sort(key=lambda point: point[0], reverse=True)
-        node_101 = cluster_points(intersections_101, threshold=150.0)
+        node_101 = cluster_points(intersections_101, threshold=150.0)  # 对杆件上的交点进行聚类得到node_101[]这个聚类后的交点数组
         if (pj[drawing_id - 1][1][1][0] > 0):
             intersections_103.sort(key=lambda point: point[0])
         else:
             intersections_103.sort(key=lambda point: point[0], reverse=True)
         node_103 = cluster_points(intersections_103, threshold=150.0)
-        filtered_101 = remove_endpoint_clusters(node_101, rod_101_points)
+        filtered_101 = remove_endpoint_clusters(node_101, rod_101_points) # 去除聚类后交点数组中的301的端点
         filtered_103 = remove_endpoint_clusters(node_103, rod_103_points)
 
+        # 得到301杆件的两个端点的二维X坐标
         min_2d_x = rod_101_points[0][0]
         max_2d_x = rod_101_points[1][0]
+
+        # 得到301 杆件在三维中的两端的 X 坐标
         if (pj[drawing_id - 1][1][1][0] > 0):
-            min_3d_x = pj[drawing_id - 1][1][1][0]
-            max_3d_x = newx
+            min_3d_x = pj[drawing_id - 1][1][1][0]  # 这个是301杆件与塔身相交的端点的三维X坐标
+            max_3d_x = newx  # 这个是301杆件尖点的三维X坐标
         else:
             min_3d_x = newx
             max_3d_x = pj[drawing_id - 1][1][1][0]
@@ -464,7 +469,7 @@ def trans(file_path, drawing_id, data1):
                 })
 
 
-        #仰视图
+        #底视图
         intersections_101.clear()
 
         rod_101_points = coordinatesBottom_data[rod_101_id]
@@ -558,7 +563,7 @@ def trans(file_path, drawing_id, data1):
         })
 
 
-        #俯视图
+        #顶视图
         jdyuzhi = 5
         intersections_103.clear()
         rod_103_points = coordinatesOverhead_data[rod_103_id]
