@@ -576,7 +576,8 @@ def build_tower_body(tashen_dir):
 def main():
     """命令行入口，可选传入数据目录。"""
 
-    default_data_directory = r"D:\Sanwei\zuobiao\TaShen\1E2-SDJ"
+    #default_data_directory = r"D:\Sanwei\zuobiao\TaShen\1E2-SDJ"
+    default_data_directory = r"D:\Sanwei\zuobiao\TaShen\J1"
 
     if len(sys.argv) > 1:
         data_directory = sys.argv[1]
