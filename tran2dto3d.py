@@ -105,6 +105,7 @@ def create_excel_pandas(nodes, members, filename='structure_data.xlsx'):
     except Exception as e:
         print(f"生成Excel文件时出错: {e}")
 
+# 保留三位小数
 def format_xyz_coordinates(data):
     for item in data:
         for key in ['X', 'Y', 'Z']:

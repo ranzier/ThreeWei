@@ -439,7 +439,13 @@ def trans(file_path, drawing_id, data1):
                 "Y": f"1{pj[drawing_id - 1][0][0]}",
                 "Z": f"1{node1_id + 20}"
             })
+
+        # 将前视图的杆件编号提取出来放到一个数组中，并从小到大排序
+        Front_ganjian_ID_list = sorted(coordinatesFront_data.keys())
         member_id_base = mi  # 新杆件的基准编号
+        index_address = Front_ganjian_ID_list.index(member_id_base) # 基准杆件在杆件数组中的索引位置
+        current_offset = 0  # 用于依次取后续编号
+
         # 按照指定规则连接交点，开口左右分别处理方便编号
         if(drawing_id != 7 and drawing_id != 8):
             ganjian.append({
@@ -452,8 +458,9 @@ def trans(file_path, drawing_id, data1):
         for i in range(min_len):
             # 连接101杆件上的第i个交点与103杆件上的第i个交点
             if i < len(node_101_nodes) and i < len(node_103_nodes):
+                current_offset += 1
                 ganjian.append({
-                    "member_id": f"{member_id_base + i * 2 + 1}",
+                    "member_id": str(Front_ganjian_ID_list[index_address + current_offset]),
                     "node1_id": node_101_nodes[i],
                     "node2_id": node_103_nodes[i],
                     "symmetry_type": 2
@@ -461,8 +468,9 @@ def trans(file_path, drawing_id, data1):
 
             # 连接103杆件上的第i+1个交点与101杆件上的第i个交点
             if i + 1 < len(node_103_nodes) and i < len(node_101_nodes):
+                current_offset += 1
                 ganjian.append({
-                    "member_id": f"{member_id_base + i * 2 + 2}",
+                    "member_id": str(Front_ganjian_ID_list[index_address + current_offset]),
                     "node1_id": node_103_nodes[i + 1],
                     "node2_id": node_101_nodes[i],
                     "symmetry_type": 2
@@ -640,6 +648,8 @@ def trans(file_path, drawing_id, data1):
                 })
         # else是俯视图交叉的情况
 
+
+        # 添加301，303和一个特殊的杆件
         new_ganjian = {
             "member_id": f"{drawing_id * 100 + 1}",
             "node1_id": pj[drawing_id - 1][1][0],
@@ -663,7 +673,7 @@ def trans(file_path, drawing_id, data1):
         ganjian.append(new_ganjian)
 
 
-   # 底面是俯视图：也就是生成1、2号担架
+  #底面是俯视图：也就是生成1、2号担架
     else:
         l1 = compute_l1_O(coordinatesOverhead_data, drawing_id)
         start_01x = coordinatesOverhead_data[drawing_id * 100 + 1][0][0]
@@ -826,8 +836,12 @@ def trans(file_path, drawing_id, data1):
                 "Z": f"1{node1_id + 20}"
             })
 
-        # 按照指定规则连接交点
+            # 将前视图的杆件编号提取出来放到一个数组中，并从小到大排序
+        Front_ganjian_ID_list = sorted(coordinatesFront_data.keys())
         member_id_base = mi  # 新杆件的基准编号
+        index_address = Front_ganjian_ID_list.index(member_id_base)  # 基准杆件在杆件数组中的索引位置
+        current_offset = 0  # 用于依次取后续编号
+
         ganjian.append({
             "member_id": f"{member_id_base}",
             "node1_id": pj[drawing_id - 1][0][0],
@@ -838,8 +852,9 @@ def trans(file_path, drawing_id, data1):
         for i in range(min_len):
             # 连接101杆件上的第i个交点与103杆件上的第i个交点
             if i < len(node_101_nodes) and i < len(node_103_nodes):
+                current_offset += 1
                 ganjian.append({
-                    "member_id": f"{member_id_base + i * 2 + 1}",
+                    "member_id": str(Front_ganjian_ID_list[index_address + current_offset]),
                     "node1_id": node_101_nodes[i],
                     "node2_id": node_103_nodes[i],
                     "symmetry_type": 2
@@ -847,8 +862,9 @@ def trans(file_path, drawing_id, data1):
 
             # 连接103杆件上的第i+1个交点与101杆件上的第i个交点
             if i + 1 < len(node_103_nodes) and i < len(node_101_nodes):
+                current_offset += 1
                 ganjian.append({
-                    "member_id": f"{member_id_base + i * 2 + 2}",
+                    "member_id": str(Front_ganjian_ID_list[index_address + current_offset]),
                     "node1_id": node_103_nodes[i + 1],
                     "node2_id": node_101_nodes[i],
                     "symmetry_type": 2
@@ -856,7 +872,7 @@ def trans(file_path, drawing_id, data1):
 
 
 
-        #俯视图
+        #顶视图
         intersections_102.clear()
 
         rod_101_points = coordinatesOverhead_data[rod_101_id]
@@ -1069,7 +1085,7 @@ def trans(file_path, drawing_id, data1):
         ganjian.append(new_ganjian)
 
 def work(file_path, data):
-    for i in range(1,9):
+    for i in range(1,5):
         specific_file_path = f"{file_path}\\0{i}.txt"
         trans(specific_file_path, i, data)
     return jiedian, ganjian
