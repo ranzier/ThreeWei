@@ -1,5 +1,6 @@
 import math
 import json
+from collections import defaultdict
 
 def dist_points(p1, p2):
     """计算点之间距离"""
@@ -196,7 +197,7 @@ def cluster_points(points, threshold=150.0):
     # 返回聚类中心点
     return [cluster["centroid"] for cluster in clusters]
 
-def remove_endpoint_clusters(clustered_points, rod_endpoints, threshold=10):
+def remove_endpoint_clusters(clustered_points, rod_endpoints, threshold=150):
     """
     去除与杆件端点重合的聚类点
 
@@ -223,8 +224,143 @@ def remove_endpoint_clusters(clustered_points, rod_endpoints, threshold=10):
 
     return filtered_points
 
+def find_ganjian_by_nodes(node_list, coordinates_data, threshold=150):
+    """
+    根据节点列表，通过节点的二维坐标查找对应的杆件编号
+
+    :param node_list: [
+        {
+            "node_id": str,
+            "point_2d": (x, y)
+        },
+        ...
+    ]
+    :param coordinates_data: {member_id: [(x1, y1), (x2, y2)]}
+    :param threshold: 距离阈值
+    :return: dict {node_id: [member_id, ...]}
+    """
+    node_to_members = {}
+
+    for node in node_list:
+        node_id = node["node_id"]
+        x0, y0 = node["point_2d"]
+
+        matched_members = []
+
+        for member_id, endpoints in coordinates_data.items():
+            for (x, y) in endpoints:
+                dist = math.hypot(x - x0, y - y0)
+                if dist < threshold:
+                    matched_members.append(member_id)
+                    break  # 一个端点命中即可
+
+        node_to_members[node_id] = matched_members
+
+    return node_to_members
+
+def calc_jiandian_xyz(coordinates_data, drawing_id, pj,pj_view_index):
+    start_01x = coordinates_data[drawing_id * 100 + 1][0][0]
+    start_01y = coordinates_data[drawing_id * 100 + 1][0][1]
+    start_02x = coordinates_data[drawing_id * 100 + 2][0][0]
+    start_02y = coordinates_data[drawing_id * 100 + 2][0][1]
+    end_01x = coordinates_data[drawing_id * 100 + 1][1][0]
+    end_01y = coordinates_data[drawing_id * 100 + 1][1][1]
+    end_02x = coordinates_data[drawing_id * 100 + 2][1][0]
+    end_02y = coordinates_data[drawing_id * 100 + 2][1][1]
+    midr = ((end_01x + end_02x) / 2, (end_01y + end_02y) / 2)  # 计算301和302两个右端点的中点
+    midl = ((start_01x + start_02x) / 2, (start_01y + start_02y) / 2)  # 计算301和302两个左端点的中点
+    h = dist_points(midl, midr)  # 计算左中点到右中点的距离
+    p_01l = (start_01x, start_01y)
+    a1 = dist_points(p_01l, midl)  # 计算301左端点到左中点的距离
+    shiji = abs(pj[drawing_id - 1][pj_view_index][1][1])  # 计算担架3与塔身相交的下端点的三维x坐标的值，也就是实际值
+    bili = shiji / a1  # 计算实际值/像素值的比例
+    p_01r = (end_01x, end_01y)
+    a2 = dist_points(p_01r, midr)
+    # 生成尖点
+    if (pj[drawing_id - 1][pj_view_index][1][0] > 0):  # if里面生成右边担架的尖点
+        newx = pj[drawing_id - 1][pj_view_index][1][0] + h * bili
+        newy = -a2 * bili
+        newz = pj[drawing_id - 1][pj_view_index][1][2]
+    else:  # else生成左边担架的尖点
+        newx = pj[drawing_id - 1][pj_view_index][1][0] - h * bili
+        newy = -a2 * bili
+        newz = pj[drawing_id - 1][pj_view_index][1][2]
+    return newx, newy, newz
+
+def get_jiaodian_on_ganjian(coordinates_data, drawing_id, pj, rod_101_id, rod_103_id, yuzhi, view_type):
+    rod_101_points = coordinates_data[rod_101_id]
+    rod_103_points = coordinates_data[rod_103_id]
+    intersections_101 = []
+    intersections_103 = []
+    mi = 199999  # 二类杆件的起始编号
+    # 遍历所有杆件
+    # rod_id：杆件编号（如 301、302、303 …），points：该杆件的两个端点（二维）
+    for rod_id, points in coordinates_data.items():
+        if rod_id in [rod_101_id, rod_103_id]:  # 如果是301、303杆件就跳过
+            continue
+        flag1 = 0  # flag1 用来统计该杆件有多少端点靠近参考杆件
+        for i, point in enumerate(points):
+            distance_to_101 = dist_point_to_line(point, rod_101_points[0], rod_101_points[1])
+            distance_to_103 = dist_point_to_line(point, rod_103_points[0], rod_103_points[1])
+            if (distance_to_103 < yuzhi or distance_to_101 < yuzhi):  # 如果端点只要靠近任意一根参考杆，flag1就加1
+                flag1 += 1
+        if flag1 == 2:  # 该杆件的两个端点都靠近参考杆件
+            intersection_101 = line_intersection(points, rod_101_points)
+            if view_type == 1:  # 正视图为1，底视图为2，顶视图为3
+                mi = min(mi, rod_id)  # 记录最小杆件编号
+            if intersection_101 is not None:
+                if view_type == 2:  # 正视图为1，底视图为2，顶视图为3
+                    mi = min(mi, rod_id)  # 记录最小杆件编号
+                intersections_101.append(intersection_101)  # 求杆件与 301 的交点坐标
+
+            # 计算目标杆件与303杆件的交点坐标
+            intersection_103 = line_intersection(points, rod_103_points)
+            if intersection_103 is not None:
+                if view_type == 3:  # 正视图为1，底视图为2，顶视图为3
+                    mi = min(mi, rod_id)  # 记录最小杆件编号
+                intersections_103.append(intersection_103)
+    # 对在301杆件上的交点这个数组的元素进行排序，按照二维坐标的x轴从小到大进行排序
+    if (pj[drawing_id - 1][1][1][0] > 0):
+        intersections_101.sort(key=lambda point: point[0])
+    else:
+        intersections_101.sort(key=lambda point: point[0], reverse=True)
+    node_101 = cluster_points(intersections_101, threshold=150.0)  # 对杆件上的交点进行聚类得到node_101[]这个聚类后的交点数组
+    if (pj[drawing_id - 1][1][1][0] > 0):
+        intersections_103.sort(key=lambda point: point[0])
+    else:
+        intersections_103.sort(key=lambda point: point[0], reverse=True)
+    node_103 = cluster_points(intersections_103, threshold=150.0)
+    filtered_101 = remove_endpoint_clusters(node_101, rod_101_points)  # 去除聚类后交点数组中的301的端点
+    filtered_103 = remove_endpoint_clusters(node_103, rod_103_points)
+    return filtered_101, filtered_103, mi
+
+def get_real_x_of_jiaodian(coordinates_data, drawing_id, filtered_101, newx, pj, rod_101_id, judge_pj_index,value_pj_index):
+    # 得到301杆件的两个端点的二维X坐标
+    min_2d_x = coordinates_data[rod_101_id][0][0]
+    max_2d_x = coordinates_data[rod_101_id][1][0]
+    # 得到301 杆件在三维中的两端的 X 坐标
+    if (pj[drawing_id - 1][judge_pj_index][1][0] > 0):
+        min_3d_x = pj[drawing_id - 1][value_pj_index][1][0]  # 这个是301杆件与塔身相交的端点的三维X坐标
+        max_3d_x = newx  # 这个是301杆件尖点的三维X坐标
+    else:
+        min_3d_x = newx
+        max_3d_x = pj[drawing_id - 1][value_pj_index][1][0]
+    # 计算比例并转换为真实x坐标
+    real_101 = []
+    for point in filtered_101:
+        # 计算点在二维杆件上的x坐标比例
+        x_ratio = (point[0] - min_2d_x) / (max_2d_x - min_2d_x)
+        # 根据比例计算真实x坐标
+        real_x = min_3d_x + x_ratio * (max_3d_x - min_3d_x)
+        real_101.append({
+            "point_2d": point,  # (x2d, y2d)
+            "x_3d": real_x  # 对应的真实x
+        })
+    return real_101
+
 jiedian = []
 ganjian = []
+
 def trans(file_path, drawing_id, data1):
     """
     参数:
@@ -255,7 +391,6 @@ def trans(file_path, drawing_id, data1):
         negative_group = []
         for point in array:
             x_coord = point[1][0]
-            #print(point[1][0])
             if x_coord >= 0:
                 positive_group.append(point)
             else:
@@ -263,668 +398,383 @@ def trans(file_path, drawing_id, data1):
         pj.append(positive_group)
         pj.append(negative_group)
 
-    # print("pj =", pj)
+    # 是尖点的ID，后面需要修改
+    jiandian_id = (drawing_id * 100 + 1) * 100
 
-
-
-    # node1_id就是101、201、301...，然后再×100：10100、20100、30100...
-    node1_id = (drawing_id * 100 + 1) * 100
-    # node2_id就是103、203、303...，然后再×100：10300、20300、30300...
-    node2_id = (drawing_id * 100 + 3) * 100
-
-    # 底面是仰视图：也就是生成3、4、5、6、7、8号担架
-    # 这个判断语句是：如果101、201、301、401在底视图的二维坐标数据里面
     if(drawing_id * 100 + 1 in coordinatesBottom_data):
         l1 = compute_l1_B(coordinatesBottom_data, drawing_id)
-        node3_id = (drawing_id * 100 + l1) * 100
-        start_01x = coordinatesBottom_data[drawing_id * 100 + 1][0][0]
-        start_01y = coordinatesBottom_data[drawing_id * 100 + 1][0][1]
-        start_02x = coordinatesBottom_data[drawing_id * 100 + 2][0][0]
-        start_02y = coordinatesBottom_data[drawing_id * 100 + 2][0][1]
-        end_01x = coordinatesBottom_data[drawing_id * 100 + 1][1][0]
-        end_01y = coordinatesBottom_data[drawing_id * 100 + 1][1][1]
-        end_02x = coordinatesBottom_data[drawing_id * 100 + 2][1][0]
-        end_02y = coordinatesBottom_data[drawing_id * 100 + 2][1][1]
-        midr = ((end_01x + end_02x) / 2, (end_01y + end_02y) / 2) # 计算301和302两个右端点的中点
-        midl = ((start_01x + start_02x) / 2, (start_01y + start_02y) / 2)  # 计算301和302两个左端点的中点
-        h = dist_points(midl, midr)  # 计算左中点到右中点的距离
-        p_01l = (start_01x, start_01y)
-        a1 = dist_points(p_01l, midl)   # 计算301左端点到左中点的距离
-        shiji = abs(pj[drawing_id - 1][1][1][1])  # 计算担架3与塔身相加的下端点的三维x坐标的值，也就是实际值
-        bili = shiji / a1 # 计算实际值/像素值的比例
-        p_01r = (end_01x, end_01y)
-        a2 = dist_points(p_01r, midr)
 
+        ############################################################################################################
+        # 1. 计算尖点的三维信息
+        ############################################################################################################
 
-        #生成尖点
-        if(pj[drawing_id - 1][1][1][0] > 0): # if里面生成右边担架的尖点
-            newx = pj[drawing_id - 1][1][1][0] + h * bili
-            newy = -a2 * bili
-            newz = pj[drawing_id - 1][1][1][2]
-        else:  # else生成左边担架的尖点
-            newx = pj[drawing_id - 1][1][1][0] - h * bili
-            newy = -a2 * bili
-            newz = pj[drawing_id - 1][1][1][2]
+        newx, newy, newz = calc_jiandian_xyz(coordinatesBottom_data, drawing_id, pj,1)
         new_node = {
-            "node_id": f"{node1_id + 20}",
+            "node_id": f"{jiandian_id + 20}",
             "node_type": 11,  # 根据实际情况设置节点类型
             "symmetry_type": 2,  # 根据实际情况设置对称类型
             "X": round(newx,3),
             "Y": round(newy,3),
-            "Z": round(newz,3)
+            "Z": round(newz,3),
         }
         jiedian.append(new_node)
 
-
-        #正视图
-        intersections_101 = []
-        intersections_102 = []
-        intersections_103 = []
+        ############################################################################################################
+        # 2. 正视图
+        ############################################################################################################
 
         rod_101_id = drawing_id * 100 + 1
         rod_102_id = drawing_id * 100 + 2
         rod_103_id = drawing_id * 100 + 3
         rod_104_id = drawing_id * 100 + 4
 
-        rod_101_points = coordinatesFront_data[rod_101_id]
-        rod_103_points = coordinatesFront_data[rod_103_id]
+        filtered_101, filtered_103, mi = get_jiaodian_on_ganjian(coordinatesFront_data,drawing_id, pj, rod_101_id,rod_103_id, yuzhi,1)
 
-        # 正视图以301、303两个杆件为参考杆件
-        ref_points_101 = rod_101_points
-        ref_points_103 = rod_103_points
+        real_101 = get_real_x_of_jiaodian(coordinatesFront_data, drawing_id, filtered_101, newx, pj, rod_101_id,1,1)
+        real_103 = get_real_x_of_jiaodian(coordinatesFront_data, drawing_id, filtered_103, newx, pj, rod_103_id, 0,0)
 
-        mi = 199999 #二类杆件的起始编号
-
-        # 遍历所有杆件
-        # rod_id：杆件编号（如 301、302、303 …），points：该杆件的两个端点（二维）
-        for rod_id, points in coordinatesFront_data.items():
-            if rod_id in [rod_101_id, rod_103_id]:  # 如果是301、303杆件就跳过
-                continue
-            flag1 = 0 # flag1 用来统计该杆件有多少端点靠近参考杆件
-            for i, point in enumerate(points):
-                distance_to_101 = dist_point_to_line(point, ref_points_101[0], ref_points_101[1])
-                distance_to_103 = dist_point_to_line(point, ref_points_103[0], ref_points_103[1])
-                if(distance_to_103 < yuzhi or distance_to_101 < yuzhi): # 如果端点只要靠近任意一根参考杆，flag1就加1
-                    flag1 += 1
-            if flag1 == 2: # 该杆件的两个端点都靠近参考杆件
-                intersection_101 = line_intersection(points, rod_101_points)
-                mi = min(mi, rod_id) # 记录最小杆件编号
-                if intersection_101 is not None:
-                    intersections_101.append(intersection_101) # 求杆件与 301 的交点坐标
-
-                # 计算目标杆件与303杆件的交点坐标
-                intersection_103 = line_intersection(points, rod_103_points)
-                if intersection_103 is not None:
-                    intersections_103.append(intersection_103)
-        # 对在301杆件上的交点这个数组的元素进行排序，按照二维坐标的x轴从小到大进行排序
-        if (pj[drawing_id - 1][1][1][0] > 0):
-            intersections_101.sort(key=lambda point: point[0])
-        else:
-            intersections_101.sort(key=lambda point: point[0], reverse=True)
-        node_101 = cluster_points(intersections_101, threshold=150.0)  # 对杆件上的交点进行聚类得到node_101[]这个聚类后的交点数组
-        if (pj[drawing_id - 1][1][1][0] > 0):
-            intersections_103.sort(key=lambda point: point[0])
-        else:
-            intersections_103.sort(key=lambda point: point[0], reverse=True)
-        node_103 = cluster_points(intersections_103, threshold=150.0)
-        filtered_101 = remove_endpoint_clusters(node_101, rod_101_points) # 去除聚类后交点数组中的301的端点
-        filtered_103 = remove_endpoint_clusters(node_103, rod_103_points)
-
-        # 得到301杆件的两个端点的二维X坐标
-        min_2d_x = rod_101_points[0][0]
-        max_2d_x = rod_101_points[1][0]
-
-        # 得到301 杆件在三维中的两端的 X 坐标
-        if (pj[drawing_id - 1][1][1][0] > 0):
-            min_3d_x = pj[drawing_id - 1][1][1][0]  # 这个是301杆件与塔身相交的端点的三维X坐标
-            max_3d_x = newx  # 这个是301杆件尖点的三维X坐标
-        else:
-            min_3d_x = newx
-            max_3d_x = pj[drawing_id - 1][1][1][0]
-
-        # 计算比例并转换为真实x坐标
-        real_101 = []
-        for point in filtered_101:
-            # 计算点在二维杆件上的x坐标比例
-            x_ratio = (point[0] - min_2d_x) / (max_2d_x - min_2d_x)
-            # 根据比例计算真实x坐标
-            real_x = min_3d_x + x_ratio * (max_3d_x - min_3d_x)
-            real_101.append(real_x)
-
-        min_2d_x = rod_103_points[0][0]
-        max_2d_x = rod_103_points[1][0]
-        if (pj[drawing_id - 1][0][1][0] > 0):
-            min_3d_x = pj[drawing_id - 1][0][1][0]
-            max_3d_x = newx
-        else:
-            min_3d_x = newx
-            max_3d_x = pj[drawing_id - 1][0][1][0]
-
-        # 计算比例并转换为真实x坐标
-        real_103 = []
-        for point in filtered_103:
-            # 计算点在二维杆件上的x坐标比例
-            x_ratio = (point[0] - min_2d_x) / (max_2d_x - min_2d_x)
-            # 根据比例计算真实x坐标
-            real_x = min_3d_x + x_ratio * (max_3d_x - min_3d_x)
-            real_103.append(real_x)
-        min_len = min(len(real_101), len(real_103))
-
+        # ----------------生成节点---------------------------------------------------------------------------------------#
         # 为交点创建节点
         node_101_nodes = []
         node_103_nodes = []
 
         # 为101杆件上的交点创建节点
-        for i, point in enumerate(real_101):
+        for i, item in enumerate(real_101):
             node_id = f"{drawing_id}101{i + 1}0"
-            node_101_nodes.append(node_id)
+            node_info = {
+                "node_id": node_id,
+                "point_2d": item["point_2d"]
+            }
+            node_101_nodes.append(node_info)
             jiedian.append({
                 "node_id": node_id,
                 "node_type": 12,
                 "symmetry_type": 2,
-                "X": point,
+                "X": item["x_3d"],
                 "Y": f"1{pj[drawing_id - 1][1][0]}",
-                "Z": f"1{node1_id + 20}"
+                "Z": f"1{jiandian_id + 20}"
             })
 
         # 为103杆件上的交点创建节点
-        for i, point in enumerate(real_103):
+        for i, item in enumerate(real_103):
             node_id = f"{drawing_id}103{i + 1}0"
-            node_103_nodes.append(node_id)
+            node_info = {
+                "node_id": node_id,
+                "point_2d": item["point_2d"]
+            }
+            node_103_nodes.append(node_info)
             jiedian.append({
                 "node_id": node_id,
                 "node_type": 12,
                 "symmetry_type": 2,
-                "X": point,
+                "X": item["x_3d"],
                 "Y": f"1{pj[drawing_id - 1][0][0]}",
-                "Z": f"1{node1_id + 20}"
+                "Z": f"1{jiandian_id + 20}"
             })
 
-        # 将前视图的杆件编号提取出来放到一个数组中，并从小到大排序
-        Front_ganjian_ID_list = sorted(coordinatesFront_data.keys())
+        # ---------------生成杆件-----------------------------------------------------------------------------------#
         member_id_base = mi  # 新杆件的基准编号
-        index_address = Front_ganjian_ID_list.index(member_id_base) # 基准杆件在杆件数组中的索引位置
-        current_offset = 0  # 用于依次取后续编号
 
         # 按照指定规则连接交点，开口左右分别处理方便编号
-        if(drawing_id != 7 and drawing_id != 8):
+        if (drawing_id != 7 and drawing_id != 8):
             ganjian.append({
                 "member_id": f"{member_id_base}",
                 "node1_id": pj[drawing_id - 1][1][0],
-                "node2_id": node_103_nodes[0],
+                "node2_id": node_103_nodes[0]["node_id"],
                 "symmetry_type": 2
             })
 
-        for i in range(min_len):
-            # 连接101杆件上的第i个交点与103杆件上的第i个交点
-            if i < len(node_101_nodes) and i < len(node_103_nodes):
-                current_offset += 1
+        ganjian_nodes_table_101 = find_ganjian_by_nodes(node_101_nodes, coordinatesFront_data)
+        ganjian_nodes_table_103 = find_ganjian_by_nodes(node_103_nodes, coordinatesFront_data)
+        all_node_member_map = {}
+        all_node_member_map.update(ganjian_nodes_table_101)
+        all_node_member_map.update(ganjian_nodes_table_103)
+        member_to_nodes = defaultdict(list)
+
+        for node_id, member_list in all_node_member_map.items():
+            for member_id in member_list:
+                member_to_nodes[member_id].append(node_id)
+
+        for member_id, node_list in member_to_nodes.items():
+            if len(node_list) == 2:  # 只有两个端点的杆件才是合法的
                 ganjian.append({
-                    "member_id": str(Front_ganjian_ID_list[index_address + current_offset]),
-                    "node1_id": node_101_nodes[i],
-                    "node2_id": node_103_nodes[i],
+                    "member_id": str(member_id),
+                    "node1_id": node_list[0],
+                    "node2_id": node_list[1],
                     "symmetry_type": 2
                 })
 
-            # 连接103杆件上的第i+1个交点与101杆件上的第i个交点
-            if i + 1 < len(node_103_nodes) and i < len(node_101_nodes):
-                current_offset += 1
-                ganjian.append({
-                    "member_id": str(Front_ganjian_ID_list[index_address + current_offset]),
-                    "node1_id": node_103_nodes[i + 1],
-                    "node2_id": node_101_nodes[i],
-                    "symmetry_type": 2
-                })
+        ############################################################################################################
+        # 3. 底视图
+        ############################################################################################################
 
+        filtered_101, filtered_102, mi = get_jiaodian_on_ganjian(coordinatesBottom_data,drawing_id, pj, rod_101_id,rod_102_id, yuzhi,2)
 
-        #底视图
-        intersections_101.clear()
+        real_101 = get_real_x_of_jiaodian(coordinatesBottom_data, drawing_id, filtered_101, newx, pj, rod_101_id,1,1)
+        real_102 = get_real_x_of_jiaodian(coordinatesBottom_data, drawing_id, filtered_102, newx, pj, rod_102_id, 0,0)
 
-        rod_101_points = coordinatesBottom_data[rod_101_id]
-        rod_102_points = coordinatesBottom_data[rod_102_id]
-
-        # 提取参考杆件的所有端点
-        ref_points_101 = rod_101_points
-        ref_points_102 = rod_102_points
-
-        mi = 199999  # 二类杆件的起始编号
-
-        # 遍历所有杆件
-        for rod_id, points in coordinatesBottom_data.items():
-            if rod_id in [rod_101_id, rod_102_id]:
-                continue
-            flag1 = 0
-            for i, point in enumerate(points):
-                distance_to_101 = dist_point_to_line(point, ref_points_101[0], ref_points_101[1])
-                distance_to_102 = dist_point_to_line(point, ref_points_102[0], ref_points_102[1])
-                if (distance_to_102 < yuzhi or distance_to_101 < yuzhi):
-                    flag1 += 1
-            if flag1 == 2:
-                intersection_101 = line_intersection(points, rod_101_points)
-                if intersection_101 is not None:
-                    mi = min(mi,rod_id)
-                    intersections_101.append(intersection_101)
-        if (pj[drawing_id - 1][1][1][0] > 0):
-            intersections_101.sort(key=lambda point: point[0])
-        else:
-            intersections_101.sort(key=lambda point: point[0], reverse=True)
-        node_101 = cluster_points(intersections_101, threshold=150.0)
-        filtered_101 = remove_endpoint_clusters(node_101, rod_101_points)
-        min_2d_x = rod_101_points[0][0]
-        max_2d_x = rod_101_points[1][0]
-        if (pj[drawing_id - 1][1][1][0] > 0):
-            min_3d_x = pj[drawing_id - 1][1][1][0]
-            max_3d_x = newx
-        else:
-            min_3d_x = newx
-            max_3d_x = pj[drawing_id - 1][1][1][0]
-
-        # 计算比例并转换为真实x坐标
-        real_101.clear()
-        for point in filtered_101:
-            # 计算点在二维杆件上的x坐标比例
-            x_ratio = (point[0] - min_2d_x) / (max_2d_x - min_2d_x)
-            # 根据比例计算真实x坐标
-            real_x = min_3d_x + x_ratio * (max_3d_x - min_3d_x)
-            real_101.append(real_x)
-
+        # ----------------生成节点---------------------------------------------------------------------------------------#
         node_101_ids = []
-        for i, point in enumerate(real_101):
+        node_102_ids = []
+        for i, item in enumerate(real_101):
             node_id = f"{drawing_id}201{i + 1}0"
-            node_101_ids.append(node_id)
+            node_info = {
+                "node_id": node_id,
+                "point_2d": item["point_2d"]
+            }
+            node_101_ids.append(node_info)
             duichenzuo = int(pj[drawing_id - 1][1][0]) + 2
             jiedian.append({
                 "node_id": node_id,
                 "node_type": 12,
                 "symmetry_type": 2,
-                "X": point,
+                "X": item["x_3d"],
                 "Y": f"1{duichenzuo}",
-                "Z": f"1{node1_id + 22}"
+                "Z": f"1{jiandian_id + 22}"
             })
+
+        for i, item in enumerate(real_102):
+            node_id = f"{drawing_id}201{i + 1}2"
+            node_info = {
+                "node_id": node_id,
+                "point_2d": item["point_2d"]
+            }
+            node_102_ids.append(node_info)
+
+        # ----------------生成杆件---------------------------------------------------------------------------------------#
+
         member_id_base = mi  # 新杆件的基准编号
         ganjian.append({
             "member_id": f"{member_id_base}",
             "node1_id": pj[drawing_id - 1][1][0],
-            "node2_id": node_101_ids[0],
+            "node2_id": node_101_ids[0]["node_id"],
             "symmetry_type": 2
         })
-        for i in range(0, len(real_101) - 1):
-            if i % 2 == 0:  # 偶数索引：当前点与下一个点的对称点相连
+
+        ganjian_nodes_table_101 = find_ganjian_by_nodes(node_101_ids, coordinatesBottom_data)
+        ganjian_nodes_table_102 = find_ganjian_by_nodes(node_102_ids, coordinatesBottom_data)
+        all_node_member_map = {}
+        all_node_member_map.update(ganjian_nodes_table_101)
+        all_node_member_map.update(ganjian_nodes_table_102)
+        member_to_nodes = defaultdict(list)
+
+        for node_id, member_list in all_node_member_map.items():
+            for member_id in member_list:
+                member_to_nodes[member_id].append(node_id)
+
+        for member_id, node_list in member_to_nodes.items():
+            if len(node_list) == 2:  # 只有两个端点的杆件才是合法的
                 ganjian.append({
-                    "member_id": f"{member_id_base + i * 2 + 2}",
-                    "node1_id": f"{drawing_id}201{i + 2}2",
-                    "node2_id": node_101_ids[i],
-                    "symmetry_type": 2
+                    "member_id": str(member_id),
+                    "node1_id": node_list[0],
+                    "node2_id": node_list[1],
+                    "symmetry_type": 0
                 })
-            else:  # 奇数索引：当前点的对称点与下一个点相连
-                ganjian.append({
-                    "member_id": f"{member_id_base + i * 2 + 2}",
-                    "node1_id": node_101_ids[i + 1],
-                    "node2_id": f"{drawing_id}201{i + 1}2",
-                    "symmetry_type": 2
-                })
+
         ganjian.append({
             "member_id": f"{member_id_base + (len(real_101) - 1) * 2 + 2}",
-            "node1_id": f"{node1_id + 20}",
-            "node2_id": node_101_ids[len(real_101) - 1],
+            "node1_id": f"{jiandian_id + 20}",
+            "node2_id": node_101_ids[len(real_101) - 1]["node_id"],
             "symmetry_type": 2
         })
 
+        ############################################################################################################
+        # 4. 顶视图
+        ############################################################################################################
 
-        #顶视图
-        jdyuzhi = 5
-        intersections_103.clear()
-        rod_103_points = coordinatesOverhead_data[rod_103_id]
-        rod_104_points = coordinatesOverhead_data[rod_104_id]
+        filtered_103, filtered_104, mi = get_jiaodian_on_ganjian(coordinatesOverhead_data,drawing_id, pj, rod_103_id,rod_104_id, yuzhi,1)
 
-        # 提取参考杆件的所有端点
-        ref_points_103 = rod_103_points
-        ref_points_104 = rod_104_points
+        real_103 = get_real_x_of_jiaodian(coordinatesOverhead_data, drawing_id, filtered_103, newx, pj, rod_103_id,1,0)
+        real_104 = get_real_x_of_jiaodian(coordinatesOverhead_data, drawing_id, filtered_104, newx, pj, rod_104_id, 1,0)
 
-        flag = 0#1代表平行情况，0交叉
-        mi = 199999
-        # 遍历所有杆件
-        for rod_id, points in coordinatesOverhead_data.items():
-            if rod_id in [rod_103_id, rod_104_id]:
-                continue
-            flag1 = 0
-            for i, point in enumerate(points):
-                distance_to_103 = dist_point_to_line(point, ref_points_103[0], ref_points_103[1])
-                distance_to_104 = dist_point_to_line(point, ref_points_104[0], ref_points_104[1])
-                if (distance_to_103 < yuzhi or distance_to_104 < yuzhi):
-                    flag1 += 1
-            if flag1 == 2:
-                jiaodu = angle_between_lines(points[0],points[1],ref_points_103[0],ref_points_104[0])
-                if jiaodu < jdyuzhi:
-                    flag = 1
-                intersection_103 = line_intersection(points, rod_103_points)
-                if intersection_103 is not None:
-                    mi = min(mi,rod_id)
-                    intersections_103.append(intersection_103)
-
-        if (pj[drawing_id - 1][1][1][0] > 0):
-            intersections_103.sort(key=lambda point: point[0])
-        else:
-            intersections_103.sort(key=lambda point: point[0], reverse=True)
-        node_103 = cluster_points(intersections_103, threshold=150.0)
-        filtered_103 = remove_endpoint_clusters(node_103, rod_103_points)
-        min_2d_x = rod_103_points[0][0]
-        max_2d_x = rod_103_points[1][0]
-        if (pj[drawing_id - 1][1][1][0] > 0):
-            min_3d_x = pj[drawing_id - 1][0][1][0]
-            max_3d_x = newx
-        else:
-            min_3d_x = newx
-            max_3d_x = pj[drawing_id - 1][0][1][0]
-
-        # 计算比例并转换为真实x坐标
-        real_103.clear()
-        for point in filtered_103:
-            # 计算点在二维杆件上的x坐标比例
-            x_ratio = (point[0] - min_2d_x) / (max_2d_x - min_2d_x)
-            # 根据比例计算真实x坐标
-            real_x = min_3d_x + x_ratio * (max_3d_x - min_3d_x)
-            real_103.append(real_x)
+        # ----------------生成节点---------------------------------------------------------------------------------------#
         node_103_ids = []
-        for i, point in enumerate(real_103):
+        node_104_ids = []
+        for i, item in enumerate(real_103):
             node_id = f"{drawing_id}301{i + 1}0"
-            node_103_ids.append(node_id)
+            node_info = {
+                "node_id": node_id,
+                "point_2d": item["point_2d"]
+            }
+            node_103_ids.append(node_info)
             jiedian.append({
                 "node_id": node_id,
                 "node_type": 12,
                 "symmetry_type": 2,
-                "X": point,
+                "X": item["x_3d"],
                 "Y": f"1{pj[drawing_id - 1][0][0]}",
-                "Z": f"1{node1_id + 20}"
+                "Z": f"1{jiandian_id + 20}"
             })
-        member_id_base = mi
-        if flag == 1:
-            for i in range(0, len(real_103)):
+
+        for i, item in enumerate(real_104):
+            node_id = f"{drawing_id}301{i + 1}2"
+            node_info = {
+                "node_id": node_id,
+                "point_2d": item["point_2d"]
+            }
+            node_104_ids.append(node_info)
+
+        # ----------------生成杆件---------------------------------------------------------------------------------------#
+        ganjian_nodes_table_103 = find_ganjian_by_nodes(node_103_ids, coordinatesOverhead_data)
+        ganjian_nodes_table_104 = find_ganjian_by_nodes(node_104_ids, coordinatesOverhead_data)
+        all_node_member_map = {}
+        all_node_member_map.update(ganjian_nodes_table_103)
+        all_node_member_map.update(ganjian_nodes_table_104)
+        member_to_nodes = defaultdict(list)
+
+        for node_id, member_list in all_node_member_map.items():
+            for member_id in member_list:
+                member_to_nodes[member_id].append(node_id)
+
+        for member_id, node_list in member_to_nodes.items():
+            if len(node_list) == 2:  # 只有两个端点的杆件才是合法的
                 ganjian.append({
-                    "member_id": f"{member_id_base + i}",
-                    "node1_id": node_103_ids[i],
-                    "node2_id": f"{drawing_id}301{i + 1}2",
+                    "member_id": str(member_id),
+                    "node1_id": node_list[0],
+                    "node2_id": node_list[1],
                     "symmetry_type": 0
                 })
-        # else是俯视图交叉的情况
+        ############################################################################################################
+        # 5. 加上一类杆件和特殊杆件
+        ############################################################################################################
 
-
-        # 添加301，303和一个特殊的杆件
         new_ganjian = {
             "member_id": f"{drawing_id * 100 + 1}",
             "node1_id": pj[drawing_id - 1][1][0],
-            "node2_id": f"{node1_id + 20}",
+            "node2_id": f"{jiandian_id + 20}",
             "symmetry_type": 2
         }
         ganjian.append(new_ganjian)
         new_ganjian = {
             "member_id": f"{drawing_id * 100 + 3}",
             "node1_id": pj[drawing_id - 1][0][0],
-            "node2_id": f"{node1_id + 20}",
+            "node2_id": f"{jiandian_id + 20}",
             "symmetry_type": 2
         }
         ganjian.append(new_ganjian)
         new_ganjian = {
             "member_id": f"{drawing_id * 100 + l1}",
-            "node1_id": f"{node1_id + 20}",
-            "node2_id": f"{node1_id + 22}",
+            "node1_id": f"{jiandian_id + 20}",
+            "node2_id": f"{jiandian_id + 22}",
             "symmetry_type": 0
         }
         ganjian.append(new_ganjian)
 
 
-  #底面是俯视图：也就是生成1、2号担架
     else:
         l1 = compute_l1_O(coordinatesOverhead_data, drawing_id)
-        start_01x = coordinatesOverhead_data[drawing_id * 100 + 1][0][0]
-        start_01y = coordinatesOverhead_data[drawing_id * 100 + 1][0][1]
-        start_02x = coordinatesOverhead_data[drawing_id * 100 + 2][0][0]
-        start_02y = coordinatesOverhead_data[drawing_id * 100 + 2][0][1]
-        end_01x = coordinatesOverhead_data[drawing_id * 100 + 1][1][0]
-        end_01y = coordinatesOverhead_data[drawing_id * 100 + 1][1][1]
-        end_02x = coordinatesOverhead_data[drawing_id * 100 + 2][1][0]
-        end_02y = coordinatesOverhead_data[drawing_id * 100 + 2][1][1]
-        midr = ((end_01x + end_02x) / 2, (end_01y + end_02y) / 2)
-        midl = ((start_01x + start_02x) / 2, (start_01y + start_02y) / 2)
-        h = dist_points(midl, midr)
-        p_01l = (start_01x, start_01y)
-        a1 = dist_points(p_01l, midl)
-        shiji = abs(pj[drawing_id - 1][0][1][1])
-        bili = shiji / a1
-        p_01r = (end_01x, end_01y)
-        a2 = dist_points(p_01r, midr)
-        node3_id = (drawing_id * 100 + l1) * 100
 
+        ############################################################################################################
+        # 1. 计算尖点的三维信息
+        ############################################################################################################
 
-        # 生成尖点
-        if (pj[drawing_id - 1][0][1][0] > 0):
-            newx = pj[drawing_id - 1][0][1][0] + h * bili
-            newy = -a2 * bili
-            newz = pj[drawing_id - 1][0][1][2]
-        else:
-            newx = pj[drawing_id - 1][0][1][0] - h * bili
-            newy = -a2 * bili
-            newz = pj[drawing_id - 1][0][1][2]
+        newx, newy, newz = calc_jiandian_xyz(coordinatesOverhead_data, drawing_id, pj, 0)
         new_node = {
-            "node_id": f"{node1_id + 20}",
+            "node_id": f"{jiandian_id + 20}",
             "node_type": 11,  # 根据实际情况设置节点类型
             "symmetry_type": 2,  # 根据实际情况设置对称类型
             "X": round(newx,3),
             "Y": round(newy,3),
-            "Z": round(newz,3)
+            "Z": round(newz,3),
         }
         jiedian.append(new_node)
 
-
-
-        # 正视图
-        intersections_101 = []
-        intersections_102 = []
-        intersections_103 = []
+        ############################################################################################################
+        # 2. 正视图
+        ############################################################################################################
 
         rod_101_id = drawing_id * 100 + 1
         rod_102_id = drawing_id * 100 + 2
         rod_103_id = drawing_id * 100 + 3
         rod_104_id = drawing_id * 100 + 4
 
-        rod_101_points = coordinatesFront_data[rod_101_id]
-        rod_103_points = coordinatesFront_data[rod_103_id]
+        filtered_101, filtered_103, mi = get_jiaodian_on_ganjian(coordinatesFront_data,drawing_id, pj, rod_101_id,rod_103_id, yuzhi,1)
 
-        # 提取参考杆件的所有端点
-        ref_points_101 = rod_101_points
-        ref_points_103 = rod_103_points
+        real_101 = get_real_x_of_jiaodian(coordinatesFront_data, drawing_id, filtered_101, newx, pj, rod_101_id, 1, 0)
+        real_103 = get_real_x_of_jiaodian(coordinatesFront_data, drawing_id, filtered_103, newx, pj, rod_103_id, 0, 1)
 
-        mi = 199999
-        # 遍历所有杆件
-        for rod_id, points in coordinatesFront_data.items():
-            if rod_id in [rod_101_id, rod_103_id]:
-                continue
-            flag1 = 0
-            for i, point in enumerate(points):
-                distance_to_101 = dist_point_to_line(point, ref_points_101[0], ref_points_101[1])
-                distance_to_103 = dist_point_to_line(point, ref_points_103[0], ref_points_103[1])
-                if (distance_to_103 < yuzhi or distance_to_101 < yuzhi):
-                    flag1 += 1
-            if flag1 == 2:
-                intersection_101 = line_intersection(points, rod_101_points)
-                mi = min(mi, rod_id)
-                if intersection_101 is not None:
-                    intersections_101.append(intersection_101)
-
-                # 计算目标杆件与103杆件的交点
-                intersection_103 = line_intersection(points, rod_103_points)
-                if intersection_103 is not None:
-                    intersections_103.append(intersection_103)
-
-        if (pj[drawing_id - 1][1][1][0] > 0):
-            intersections_101.sort(key=lambda point: point[0])
-        else:
-            intersections_101.sort(key=lambda point: point[0], reverse=True)
-        node_101 = cluster_points(intersections_101, threshold=150.0)
-        if (pj[drawing_id - 1][1][1][0] > 0):
-            intersections_103.sort(key=lambda point: point[0])
-        else:
-            intersections_103.sort(key=lambda point: point[0], reverse=True)
-        node_103 = cluster_points(intersections_103, threshold=150.0)
-        filtered_101 = remove_endpoint_clusters(node_101, rod_101_points)
-        filtered_103 = remove_endpoint_clusters(node_103, rod_103_points)
-
-        min_2d_x = rod_101_points[0][0]
-        max_2d_x = rod_101_points[1][0]
-        if (pj[drawing_id - 1][1][1][0] > 0):
-            min_3d_x = pj[drawing_id - 1][0][1][0]
-            max_3d_x = newx
-        else:
-            min_3d_x = newx
-            max_3d_x = pj[drawing_id - 1][0][1][0]
-
-        # 计算比例并转换为真实x坐标
-        real_101 = []
-        for point in filtered_101:
-            # 计算点在二维杆件上的x坐标比例
-            x_ratio = (point[0] - min_2d_x) / (max_2d_x - min_2d_x)
-            # 根据比例计算真实x坐标
-            real_x = min_3d_x + x_ratio * (max_3d_x - min_3d_x)
-            real_101.append(real_x)
-
-        min_2d_x = rod_103_points[0][0]
-        max_2d_x = rod_103_points[1][0]
-        if (pj[drawing_id - 1][0][1][0] > 0):
-            min_3d_x = pj[drawing_id - 1][1][1][0]
-            max_3d_x = newx
-        else:
-            min_3d_x = newx
-            max_3d_x = pj[drawing_id - 1][1][1][0]
-
-        # 计算比例并转换为真实x坐标
-        real_103 = []
-        for point in filtered_103:
-            # 计算点在二维杆件上的x坐标比例
-            x_ratio = (point[0] - min_2d_x) / (max_2d_x - min_2d_x)
-            # 根据比例计算真实x坐标
-            real_x = min_3d_x + x_ratio * (max_3d_x - min_3d_x)
-            real_103.append(real_x)
-        min_len = min(len(real_101), len(real_103))
-
-        # 为交点创建节点
+        # ---------------生成节点-----------------------------------------------------------------------------------#
+       # 为交点创建节点
         node_101_nodes = []
         node_103_nodes = []
 
         # 为101杆件上的交点创建节点
-        for i, point in enumerate(real_101):
+        for i, item in enumerate(real_101):
             node_id = f"{drawing_id}101{i + 1}0"
-            node_101_nodes.append(node_id)
+            node_info = {
+                "node_id": node_id,
+                "point_2d": item["point_2d"]
+            }
+            node_101_nodes.append(node_info)
             jiedian.append({
                 "node_id": node_id,
                 "node_type": 12,
                 "symmetry_type": 2,
-                "X": point,
+                "X": item["x_3d"],
                 "Y": f"1{pj[drawing_id - 1][0][0]}",
-                "Z": f"1{node1_id + 20}"
+                "Z": f"1{jiandian_id + 20}"
             })
 
         # 为103杆件上的交点创建节点
-        for i, point in enumerate(real_103):
+        for i, item in enumerate(real_103):
             node_id = f"{drawing_id}103{i + 1}0"
-            node_103_nodes.append(node_id)
+            node_info = {
+                "node_id": node_id,
+                "point_2d": item["point_2d"]
+            }
+            node_103_nodes.append(node_info)
             jiedian.append({
                 "node_id": node_id,
                 "node_type": 12,
                 "symmetry_type": 2,
-                "X": point,
+                "X": item["x_3d"],
                 "Y": f"1{pj[drawing_id - 1][1][0]}",
-                "Z": f"1{node1_id + 20}"
+                "Z": f"1{jiandian_id + 20}"
             })
 
-            # 将前视图的杆件编号提取出来放到一个数组中，并从小到大排序
-        Front_ganjian_ID_list = sorted(coordinatesFront_data.keys())
+        # ---------------生成杆件-----------------------------------------------------------------------------------#
         member_id_base = mi  # 新杆件的基准编号
-        index_address = Front_ganjian_ID_list.index(member_id_base)  # 基准杆件在杆件数组中的索引位置
-        current_offset = 0  # 用于依次取后续编号
 
         ganjian.append({
             "member_id": f"{member_id_base}",
             "node1_id": pj[drawing_id - 1][0][0],
-            "node2_id": node_103_nodes[0],
+            "node2_id": node_103_nodes[0]["node_id"],
             "symmetry_type": 2
         })
 
-        for i in range(min_len):
-            # 连接101杆件上的第i个交点与103杆件上的第i个交点
-            if i < len(node_101_nodes) and i < len(node_103_nodes):
-                current_offset += 1
+        ganjian_nodes_table_101 = find_ganjian_by_nodes(node_101_nodes, coordinatesFront_data)
+        ganjian_nodes_table_103 = find_ganjian_by_nodes(node_103_nodes, coordinatesFront_data)
+        all_node_member_map = {}
+        all_node_member_map.update(ganjian_nodes_table_101)
+        all_node_member_map.update(ganjian_nodes_table_103)
+        member_to_nodes = defaultdict(list)
+
+        for node_id, member_list in all_node_member_map.items():
+            for member_id in member_list:
+                member_to_nodes[member_id].append(node_id)
+
+        for member_id, node_list in member_to_nodes.items():
+            if len(node_list) == 2:  # 只有两个端点的杆件才是合法的
                 ganjian.append({
-                    "member_id": str(Front_ganjian_ID_list[index_address + current_offset]),
-                    "node1_id": node_101_nodes[i],
-                    "node2_id": node_103_nodes[i],
+                    "member_id": str(member_id),
+                    "node1_id": node_list[0],
+                    "node2_id": node_list[1],
                     "symmetry_type": 2
                 })
 
-            # 连接103杆件上的第i+1个交点与101杆件上的第i个交点
-            if i + 1 < len(node_103_nodes) and i < len(node_101_nodes):
-                current_offset += 1
-                ganjian.append({
-                    "member_id": str(Front_ganjian_ID_list[index_address + current_offset]),
-                    "node1_id": node_103_nodes[i + 1],
-                    "node2_id": node_101_nodes[i],
-                    "symmetry_type": 2
-                })
 
+        ############################################################################################################
+        # 3. 顶视图
+        ############################################################################################################
 
+        filtered_101, filtered_102, mi = get_jiaodian_on_ganjian(coordinatesOverhead_data,drawing_id, pj, rod_101_id,rod_102_id, yuzhi,3)
 
-        #顶视图
-        intersections_102.clear()
+       # real_101 = get_real_x_of_jiaodian(coordinatesOverhead_data, drawing_id, filtered_101, newx, pj, rod_101_id,1,1)
+        real_102 = get_real_x_of_jiaodian(coordinatesOverhead_data, drawing_id, filtered_102, newx, pj, rod_102_id, 1,0)
 
-        rod_101_points = coordinatesOverhead_data[rod_101_id]
-        rod_102_points = coordinatesOverhead_data[rod_102_id]
-
-        # 提取参考杆件的所有端点
-        ref_points_101 = rod_101_points
-        ref_points_102 = rod_102_points
-
-        mi = 199999
-        # 遍历所有杆件
-        for rod_id, points in coordinatesOverhead_data.items():
-            if rod_id in [rod_101_id, rod_102_id]:
-                continue
-            flag1 = 0
-            for i, point in enumerate(points):
-                distance_to_101 = dist_point_to_line(point, ref_points_101[0], ref_points_101[1])
-                distance_to_102 = dist_point_to_line(point, ref_points_102[0], ref_points_102[1])
-                if (distance_to_102 < yuzhi or distance_to_101 < yuzhi):
-                    flag1 += 1
-            if flag1 == 2:
-                mi = min(mi,rod_id)
-                intersection_102 = line_intersection(points, rod_102_points)
-                if intersection_102 is not None:
-                    intersections_102.append(intersection_102)
-
-        if (pj[drawing_id - 1][1][1][0] > 0):
-            intersections_102.sort(key=lambda point: point[0])
-        else:
-            intersections_102.sort(key=lambda point: point[0], reverse=True)
-        node_102 = cluster_points(intersections_102, threshold=150.0)
-        filtered_102 = remove_endpoint_clusters(node_102, rod_102_points)
-        min_2d_x = rod_102_points[0][0]
-        max_2d_x = rod_102_points[1][0]
-        if (pj[drawing_id - 1][1][1][0] > 0):
-            min_3d_x = pj[drawing_id - 1][0][1][0]
-            max_3d_x = newx
-        else:
-            min_3d_x = newx
-            max_3d_x = pj[drawing_id - 1][0][1][0]
-
-        # 计算比例并转换为真实x坐标
-        real_102 = []
-        for point in filtered_102:
-            # 计算点在二维杆件上的x坐标比例
-            x_ratio = (point[0] - min_2d_x) / (max_2d_x - min_2d_x)
-            # 根据比例计算真实x坐标
-            real_x = min_3d_x + x_ratio * (max_3d_x - min_3d_x)
-            real_102.append(real_x)
-
+        # ----------------生成节点---------------------------------------------------------------------------------------#
         node_102_ids = []
-        for i, point in enumerate(real_102):
+        for i, item in enumerate(real_102):
             node_id = f"{drawing_id}201{i + 1}0"
             node_102_ids.append(node_id)
             duichenzuo = int(pj[drawing_id - 1][0][0]) + 2
@@ -932,10 +782,12 @@ def trans(file_path, drawing_id, data1):
                 "node_id": node_id,
                 "node_type": 12,
                 "symmetry_type": 2,
-                "X": point,
+                "X": item["x_3d"],
                 "Y": f"1{duichenzuo}",
-                "Z": f"1{node1_id + 22}"
+                "Z": f"1{jiandian_id + 22}"
             })
+
+        # ----------------生成杆件---------------------------------------------------------------------------------------#
         member_id_base = mi  # 新杆件的基准编号
         ganjian.append({
             "member_id": f"{member_id_base}",
@@ -960,66 +812,23 @@ def trans(file_path, drawing_id, data1):
                 })
         ganjian.append({
             "member_id": f"{member_id_base + (len(real_102) - 1) * 2 + 2}",
-            "node1_id": f"{node1_id + 20}",
+            "node1_id": f"{jiandian_id + 20}",
             "node2_id": node_102_ids[len(real_102) - 1],
             "symmetry_type": 2
         })
 
+        ############################################################################################################
+        # 4. 底视图
+        ############################################################################################################
 
+        filtered_103, filtered_104, mi = get_jiaodian_on_ganjian(coordinatesBottom_data,drawing_id, pj, rod_103_id,rod_104_id, yuzhi,2)
 
-        #仰视图
-        intersections_103.clear()
+        real_103 = get_real_x_of_jiaodian(coordinatesBottom_data, drawing_id, filtered_103, newx, pj, rod_103_id,1,0)
+        # real_104 = get_real_x_of_jiaodian(coordinatesBottom_data, drawing_id, filtered_104, newx, pj, rod_104_id, 1,0)
 
-        rod_103_points = coordinatesBottom_data[rod_103_id]
-        rod_104_points = coordinatesBottom_data[rod_104_id]
-
-        # 提取参考杆件的所有端点
-        ref_points_103 = rod_103_points
-        ref_points_104 = rod_104_points
-
-        mi = 199999
-        # 遍历所有杆件
-        for rod_id, points in coordinatesBottom_data.items():
-            if rod_id in [rod_103_id, rod_104_id]:
-                continue
-            flag1 = 0
-            for i, point in enumerate(points):
-                distance_to_103 = dist_point_to_line(point, ref_points_103[0], ref_points_103[1])
-                distance_to_104 = dist_point_to_line(point, ref_points_104[0], ref_points_104[1])
-                if (distance_to_104 < yuzhi or distance_to_103 < yuzhi):
-                    flag1 += 1
-            if flag1 == 2:
-                mi = min(mi,rod_id)
-                intersection_103 = line_intersection(points, rod_103_points)
-                if intersection_103 is not None:
-                    intersections_103.append(intersection_103)
-
-        if (pj[drawing_id - 1][1][1][0] > 0):
-            intersections_103.sort(key=lambda point: point[0])
-        else:
-            intersections_103.sort(key=lambda point: point[0], reverse=True)
-        node_103 = cluster_points(intersections_103)
-        filtered_103 = remove_endpoint_clusters(node_103, rod_103_points)
-        min_2d_x = rod_103_points[0][0]
-        max_2d_x = rod_103_points[1][0]
-        if (pj[drawing_id - 1][1][1][0] > 0):
-            min_3d_x = pj[drawing_id - 1][0][1][0]
-            max_3d_x = newx
-        else:
-            min_3d_x = newx
-            max_3d_x = pj[drawing_id - 1][0][1][0]
-
-        # 计算比例并转换为真实x坐标
-        real_103 = []
-        for point in filtered_103:
-            # 计算点在二维杆件上的x坐标比例
-            x_ratio = (point[0] - min_2d_x) / (max_2d_x - min_2d_x)
-            # 根据比例计算真实x坐标
-            real_x = min_3d_x + x_ratio * (max_3d_x - min_3d_x)
-            real_103.append(real_x)
-
+        # ----------------生成节点---------------------------------------------------------------------------------------#
         node_103_ids = []
-        for i, point in enumerate(real_103):
+        for i, item in enumerate(real_103):
             node_id = f"{drawing_id}301{i + 1}0"
             node_103_ids.append(node_id)
             duichenzuo = int(pj[drawing_id - 1][0][0]) + 2
@@ -1027,10 +836,12 @@ def trans(file_path, drawing_id, data1):
                 "node_id": node_id,
                 "node_type": 12,
                 "symmetry_type": 2,
-                "X": point,
+                "X": item["x_3d"],
                 "Y": f"1{duichenzuo}",
-                "Z": f"1{node1_id + 22}"
+                "Z": f"1{jiandian_id + 22}"
             })
+
+        # ----------------生成杆件---------------------------------------------------------------------------------------#
         member_id_base = mi  # 新杆件的基准编号
         ganjian.append({
             "member_id": f"{member_id_base}",
@@ -1055,37 +866,40 @@ def trans(file_path, drawing_id, data1):
                 })
         ganjian.append({
             "member_id": f"{member_id_base + (len(real_103) - 1) * 2 + 2}",
-            "node1_id": f"{node1_id + 20}",
+            "node1_id": f"{jiandian_id + 20}",
             "node2_id": node_103_ids[len(real_103) - 1],
             "symmetry_type": 2
         })
 
-
+        ############################################################################################################
+        # 5. 加上一类杆件和特殊杆件
+        ############################################################################################################
 
         new_ganjian = {
            "member_id": f"{drawing_id * 100 + 1}",
            "node1_id": pj[drawing_id - 1][0][0],
-           "node2_id": f"{node1_id + 20}",
+           "node2_id": f"{jiandian_id + 20}",
             "symmetry_type": 2
         }
         ganjian.append(new_ganjian)
         new_ganjian = {
             "member_id": f"{drawing_id * 100 + 3}",
             "node1_id": pj[drawing_id - 1][1][0],
-            "node2_id": f"{node1_id + 20}",
+            "node2_id": f"{jiandian_id + 20}",
             "symmetry_type": 2
         }
         ganjian.append(new_ganjian)
         new_ganjian = {
             "member_id": f"{drawing_id * 100 + l1}",
-            "node1_id": f"{node1_id + 20}",
-            "node2_id": f"{node1_id + 22}",
+            "node1_id": f"{jiandian_id + 20}",
+            "node2_id": f"{jiandian_id + 22}",
             "symmetry_type": 0
         }
         ganjian.append(new_ganjian)
 
+
 def work(file_path, data):
-    for i in range(1,5):
+    for i in range(1,9):
         specific_file_path = f"{file_path}\\0{i}.txt"
         trans(specific_file_path, i, data)
     return jiedian, ganjian
