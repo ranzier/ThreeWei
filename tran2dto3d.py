@@ -124,8 +124,10 @@ def tran2dto3d(danjia_dir,tashen_dir,project_path,savepath_ui):
     #         file_path = os.path.join(root, file)
     #         specs.update(numandtableDetector.extract_table_specs(file_path))
 
+
+    drawing_type ="1E2-SDJ"
     ganjian_tashen, jiedian_tashen, pinjie_tashen = tower_body_reconstruction.build_tower_body(tashen_dir)
-    jiedian_danjia,ganjian_danjia= xintrans.work(danjia_dir, pinjie_tashen)
+    jiedian_danjia,ganjian_danjia= xintrans.work(danjia_dir, pinjie_tashen,drawing_type)
     jiedian=jiedian_danjia+jiedian_tashen
     jiedian = format_xyz_coordinates(jiedian)
     savepath=os.path.join(project_path, "3d_result")
