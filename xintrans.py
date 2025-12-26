@@ -354,6 +354,11 @@ def trans(file_path, drawing_id, data1, drawing_type):
         pj.append(positive_group)
         pj.append(negative_group)
 
+    # ===== J1 担架索引修正 =====
+    if drawing_type == "J1":
+        # 原 pj 是 8 个担架，这里只取 0,2,4,6 对应的
+        pj = [pj[i] for i in (0, 2, 4, 6)]
+
     jiandian_id = (drawing_id * 100 + 1) * 100
 
     if(drawing_id * 100 + 1 in coordinatesBottom_data):
