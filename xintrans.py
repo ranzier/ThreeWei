@@ -690,26 +690,37 @@ def trans(file_path, drawing_id, data1, drawing_type):
                 })
 
         ############################################################################################################
-        # 5. 加上特殊的点
+        # 5. 添加一类杆件
         ############################################################################################################
 
-        if drawing_type == "1E2-SDJ":
-            new_ganjian = {
-                "member_id": f"{drawing_id * 100 + 3}",
-                "node1_id": pj[drawing_id - 1][0][0],
-                "node2_id": f"{jiandian_id + 20}",
-                "symmetry_type": 2
-            }
-            ganjian.append(new_ganjian)
+        # 需要删除的杆件编号（统一转成字符串，避免类型不一致问题）
+        remove_ids = {
+            str(rod_101_id),
+            str(rod_102_id),
+            str(rod_103_id),
+            str(rod_104_id)
+        }
 
-            if drawing_id == 7 or drawing_id == 8:
-                new_ganjian = {
-                    "member_id": f"{drawing_id * 100 + 1}",
-                    "node1_id": pj[drawing_id - 1][1][0],
-                    "node2_id": f"{jiandian_id + 20}",
-                    "symmetry_type": 2
-                }
-                ganjian.append(new_ganjian)
+        ganjian[:] = [
+            g for g in ganjian
+            if g.get("member_id") not in remove_ids
+        ]
+
+        new_ganjian = {
+            "member_id": f"{rod_101_id}",
+            "node1_id": pj[drawing_id - 1][1][0],
+            "node2_id": f"{jiandian_id + 20}",
+            "symmetry_type": 2
+        }
+        ganjian.append(new_ganjian)
+
+        new_ganjian = {
+            "member_id": f"{rod_103_id}",
+            "node1_id": pj[drawing_id - 1][0][0],
+            "node2_id": f"{jiandian_id + 20}",
+            "symmetry_type": 2
+        }
+        ganjian.append(new_ganjian)
 
 
     else:
@@ -1015,6 +1026,40 @@ def trans(file_path, drawing_id, data1, drawing_type):
                     "node2_id": node_list[1],
                     "symmetry_type": 0
                 })
+
+
+        ############################################################################################################
+        # 5. 添加一类杆件
+        ############################################################################################################
+
+        remove_ids = {
+            str(rod_101_id),
+            str(rod_102_id),
+            str(rod_103_id),
+            str(rod_104_id)
+        }
+
+        ganjian[:] = [
+            g for g in ganjian
+            if g.get("member_id") not in remove_ids
+        ]
+
+        new_ganjian = {
+            "member_id": f"{rod_101_id}",
+            "node1_id": pj[drawing_id - 1][0][0],
+            "node2_id": f"{jiandian_id + 20}",
+            "symmetry_type": 2
+        }
+        ganjian.append(new_ganjian)
+
+        new_ganjian = {
+            "member_id": f"{rod_103_id}",
+            "node1_id": pj[drawing_id - 1][1][0],
+            "node2_id": f"{jiandian_id + 20}",
+            "symmetry_type": 2
+        }
+        ganjian.append(new_ganjian)
+
 
 
 def work(file_path, data, drawing_type):
