@@ -1060,7 +1060,13 @@ def trans(file_path, drawing_id, data1, drawing_type):
         }
         ganjian.append(new_ganjian)
 
-
+   # ===== J1 担架对称性生成 =====
+    if drawing_type == "J1":
+        for g in ganjian:
+            if g.get("symmetry_type") == 2:
+                g["symmetry_type"] = 4
+            elif g.get("symmetry_type") == 0:
+                g["symmetry_type"] = 1
 
 def work(file_path, data, drawing_type):
     if drawing_type=="1E2-SDJ":
