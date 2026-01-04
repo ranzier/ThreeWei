@@ -2,6 +2,9 @@ import math
 import json
 from collections import defaultdict
 
+from get_first_ganjian_id import detect_main_rods_enhanced
+
+
 def dist_points(p1, p2):
     """计算点之间距离"""
     x1, y1 = p1
@@ -170,7 +173,9 @@ def cluster_points(points, threshold=150.0):
     return [cluster["centroid"] for cluster in clusters]
 
 def mark_endpoint_for_real_points(real_points,coordinates_data,rod_id,left_endpoint_3d_id,right_endpoint_3d_id,threshold=150):
-
+    """
+    判断这个交点是不是这个杆件上的两个端点中的其中一个，如果是的话，用端点的节点编号标记它
+    """
     # 杆件的两个二维端点
     rod_p1, rod_p2 = coordinates_data[rod_id]
 
@@ -213,6 +218,9 @@ def find_ganjian_by_nodes(node_list, coordinates_data, threshold=150):
     return node_to_members
 
 def calc_jiandian_xyz(coordinates_data, drawing_id, pj,pj_view_index):
+    """
+    生成尖点的真实XYZ的值
+    """
     start_01x = coordinates_data[drawing_id * 100 + 1][0][0]
     start_01y = coordinates_data[drawing_id * 100 + 1][0][1]
     start_02x = coordinates_data[drawing_id * 100 + 2][0][0]
@@ -242,6 +250,9 @@ def calc_jiandian_xyz(coordinates_data, drawing_id, pj,pj_view_index):
     return newx, newy, newz
 
 def get_jiaodian_on_ganjian(coordinates_data, drawing_id, pj, rod_101_id, rod_103_id, yuzhi):
+    """
+    从一类杆件上找到交点
+    """
     rod_101_points = coordinates_data[rod_101_id]
     rod_103_points = coordinates_data[rod_103_id]
     intersections_101 = []
@@ -282,6 +293,9 @@ def get_jiaodian_on_ganjian(coordinates_data, drawing_id, pj, rod_101_id, rod_10
     return node_101,node_103
 
 def get_real_x_of_jiaodian(coordinates_data, drawing_id, filtered_101, newx, pj, rod_101_id, judge_pj_index,value_pj_index):
+    """
+    计算交点的真实x值
+    """
     # 得到301杆件的两个端点的二维X坐标
     min_2d_x = coordinates_data[rod_101_id][0][0]
     max_2d_x = coordinates_data[rod_101_id][1][0]
@@ -306,6 +320,9 @@ def get_real_x_of_jiaodian(coordinates_data, drawing_id, filtered_101, newx, pj,
     return real_101
 
 def generate_ganjian(coordinatesFront_data, node_101_nodes, node_103_nodes):
+    """
+    根据节点从二维坐标信息中找到杆件编号
+    """
     ganjian_nodes_table_101 = find_ganjian_by_nodes(node_101_nodes, coordinatesFront_data)
     ganjian_nodes_table_103 = find_ganjian_by_nodes(node_103_nodes, coordinatesFront_data)
     all_node_member_map = {}
@@ -316,6 +333,9 @@ def generate_ganjian(coordinatesFront_data, node_101_nodes, node_103_nodes):
         for member_id in member_list:
             member_to_nodes[member_id].append(node_id)
     return member_to_nodes
+
+
+
 
 
 jiedian = []
@@ -336,6 +356,8 @@ def trans(file_path, drawing_id, data1, drawing_type):
     coordinatesFront_data = namespace.get('coordinatesFront_data', {})
     coordinatesBottom_data = namespace.get('coordinatesBottom_data', {})
     coordinatesOverhead_data = namespace.get('coordinatesOverhead_data', {})
+
+
 
     yuzhi = 50#是否在直线上距离阈值
     data = transform_data(data1)
@@ -358,6 +380,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
     if drawing_type == "J1":
         # 原 pj 是 8 个担架，这里只取 0,2,4,6 对应的
         pj = [pj[i] for i in (0, 2, 4, 6)]
+
 
     jiandian_id = (drawing_id * 100 + 1) * 100
 
@@ -382,13 +405,19 @@ def trans(file_path, drawing_id, data1, drawing_type):
         # 2. 正视图
         ############################################################################################################
 
-        rod_101_id = drawing_id * 100 + 1
-        rod_102_id = drawing_id * 100 + 2
-        rod_103_id = drawing_id * 100 + 3
-        rod_104_id = drawing_id * 100 + 4
+        rod_101_id, rod_103_id = detect_main_rods_enhanced(coordinatesFront_data)
+        rod_101_id, rod_102_id = detect_main_rods_enhanced(coordinatesBottom_data)
+        rod_103_id, rod_104_id = detect_main_rods_enhanced(coordinatesOverhead_data)
 
+        # rod_101_id = drawing_id * 100 + 1
+        # rod_102_id = drawing_id * 100 + 2
+        # rod_103_id = drawing_id * 100 + 3
+        # rod_104_id = drawing_id * 100 + 4
+
+        # 得到两个一类杆件上的交点
         jiaodian_101,jiaodian_103 = get_jiaodian_on_ganjian(coordinatesFront_data,drawing_id, pj, rod_101_id,rod_103_id, yuzhi)
 
+        # 得到这些交点的真实x的值
         real_101 = get_real_x_of_jiaodian(coordinatesFront_data, drawing_id, jiaodian_101, newx, pj, rod_101_id, 1, 1)
         real_103 = get_real_x_of_jiaodian(coordinatesFront_data, drawing_id, jiaodian_103, newx, pj, rod_103_id, 0, 0)
 
@@ -398,6 +427,8 @@ def trans(file_path, drawing_id, data1, drawing_type):
         else:
             left_3d_id = f"{jiandian_id + 20}"
             right_3d_id = pj[drawing_id - 1][1][0]  # 301 与塔身相交端点
+
+        # 标记节点中的端点
         real_101 = mark_endpoint_for_real_points(real_101,coordinatesFront_data,rod_101_id,left_3d_id,right_3d_id)
 
         if (pj[drawing_id - 1][1][1][0] > 0):
@@ -659,7 +690,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
                 })
 
         ############################################################################################################
-        # 5. 加上特殊的杆件
+        # 5. 加上特殊的点
         ############################################################################################################
 
         if drawing_type == "1E2-SDJ":
@@ -679,6 +710,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
                     "symmetry_type": 2
                 }
                 ganjian.append(new_ganjian)
+
 
     else:
 
@@ -701,10 +733,16 @@ def trans(file_path, drawing_id, data1, drawing_type):
         # 2. 正视图
         ############################################################################################################
 
-        rod_101_id = drawing_id * 100 + 1
-        rod_102_id = drawing_id * 100 + 2
-        rod_103_id = drawing_id * 100 + 3
-        rod_104_id = drawing_id * 100 + 4
+
+        rod_101_id, rod_103_id = detect_main_rods_enhanced(coordinatesFront_data)
+        rod_103_id, rod_104_id = detect_main_rods_enhanced(coordinatesBottom_data)
+        rod_101_id, rod_102_id = detect_main_rods_enhanced(coordinatesOverhead_data)
+
+
+        # rod_101_id = drawing_id * 100 + 1
+        # rod_102_id = drawing_id * 100 + 2
+        # rod_103_id = drawing_id * 100 + 3
+        # rod_104_id = drawing_id * 100 + 4
 
         jiaodian_101,jiaodian_103 = get_jiaodian_on_ganjian(coordinatesFront_data,drawing_id, pj, rod_101_id,rod_103_id, yuzhi)
 
