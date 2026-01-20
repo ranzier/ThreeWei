@@ -338,6 +338,7 @@ def main(data_dir: str):
             front_support = find_supports(front_raw)
             right_support = find_supports(right_raw)
 
+
             front_horizontal = find_horizontals(
                 {k: v for k, v in front_raw.items() if k not in front_support},
                 tol_y=H_TOL
@@ -346,6 +347,7 @@ def main(data_dir: str):
                 {k: v for k, v in right_raw.items() if k not in right_support},
                 tol_y=H_TOL
             )
+
 
             front_rest = {k: v for k, v in front_raw.items()
                     if k not in front_support and k not in front_horizontal}
@@ -723,6 +725,6 @@ def main(data_dir: str):
     return ganjian_final, jiedian_final, pinjie_final
 
 if __name__ == "__main__":
-    default_data_directory = r"d:/project/2d_coordinate"
+    default_data_directory = r"d:/SanWei/project/2d_coordinate"
     print(f"脚本启动，将使用默认路径: '{default_data_directory}'")
     ganjian_result, jiedian_result, pinjie_result = main(data_dir=default_data_directory)

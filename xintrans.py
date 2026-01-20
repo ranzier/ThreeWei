@@ -409,11 +409,6 @@ def trans(file_path, drawing_id, data1, drawing_type):
         rod_101_id, rod_102_id = detect_main_rods_enhanced(coordinatesBottom_data)
         rod_103_id, rod_104_id = detect_main_rods_enhanced(coordinatesOverhead_data)
 
-        # rod_101_id = drawing_id * 100 + 1
-        # rod_102_id = drawing_id * 100 + 2
-        # rod_103_id = drawing_id * 100 + 3
-        # rod_104_id = drawing_id * 100 + 4
-
         # 得到两个一类杆件上的交点
         jiaodian_101,jiaodian_103 = get_jiaodian_on_ganjian(coordinatesFront_data,drawing_id, pj, rod_101_id,rod_103_id, yuzhi)
 
@@ -693,7 +688,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
         # 5. 添加一类杆件
         ############################################################################################################
 
-        # 需要删除的杆件编号（统一转成字符串，避免类型不一致问题）
+        # 删除已经生成的一类杆件信息
         remove_ids = {
             str(rod_101_id),
             str(rod_102_id),
@@ -749,11 +744,6 @@ def trans(file_path, drawing_id, data1, drawing_type):
         rod_103_id, rod_104_id = detect_main_rods_enhanced(coordinatesBottom_data)
         rod_101_id, rod_102_id = detect_main_rods_enhanced(coordinatesOverhead_data)
 
-
-        # rod_101_id = drawing_id * 100 + 1
-        # rod_102_id = drawing_id * 100 + 2
-        # rod_103_id = drawing_id * 100 + 3
-        # rod_104_id = drawing_id * 100 + 4
 
         jiaodian_101,jiaodian_103 = get_jiaodian_on_ganjian(coordinatesFront_data,drawing_id, pj, rod_101_id,rod_103_id, yuzhi)
 

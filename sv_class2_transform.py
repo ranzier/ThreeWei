@@ -403,8 +403,13 @@ def convert_data0202(line_z_dict, lines02, line_group, lines01, horizontal_lines
             continue
 
         far_end_point = near_zero_y < other_point[1]
-        z_values = line_z_dict[primary_id]
-        z_far = max(z_values) if far_end_point else min(z_values)
+        # z_values = line_z_dict[primary_id]
+        # z_far = max(z_values) if far_end_point else min(z_values)
+        # ✅ 改成：直接复用 matched_horizontal_id 的 Z 引用
+        if far_end_point:
+            z_far = f"{matched_horizontal_id}11"
+        else:
+            z_far = f"{matched_horizontal_id}12"
 
         node101_id = f"{primary_id}10"
         jiedian.append({

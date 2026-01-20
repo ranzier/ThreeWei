@@ -887,6 +887,8 @@ def _bottom_from_support(view_support: CoordDict, axis: str = "x") -> Optional[T
     left, right = bottom_pts[0], bottom_pts[-1]
     return (left, right)
 
+
+
 def extract_bases_front(front_support: CoordDict, front_horizontal: CoordDict):
     """
     返回： (x1,z1),(x2,z2),(x3,z3),(x4,z4)
@@ -901,6 +903,7 @@ def extract_bases_front(front_support: CoordDict, front_horizontal: CoordDict):
     return ( (float(x1),float(z1)), (float(x2),float(z2)),
              (float(x3),float(z3)), (float(x4),float(z4)) )
 
+
 def extract_bases_side(right_support: CoordDict, right_horizontal: CoordDict):
     """
     返回： (y5,z5),(y6,z6),(y7,z7),(y8,z8) （上底左/右, 下底左/右）
@@ -913,6 +916,8 @@ def extract_bases_side(right_support: CoordDict, right_horizontal: CoordDict):
     (y7,z7),(y8,z8) = bottom
     return ( (float(y5),float(z5)), (float(y6),float(z6)),
              (float(y7),float(z7)), (float(y8),float(z8)) )
+
+
 
 def compute_heights_and_angles(front_bases, side_bases):
     """

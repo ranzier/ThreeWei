@@ -417,6 +417,31 @@ def reuse_ids_at_final(
     jiedian_B: List[dict],
     eps: float = 1e-6,
 ):
+    def collect_A_body_base_11(jiedian_A, ganjian_A):
+        # 找到被 12 类节点引用的 11（塔头接口）
+        interface_11 = set()
+
+        # 只排除：被 12 类节点引用的 11
+        for nd in jiedian_A:
+            if int(nd.get("node_type", 0)) != 12:
+                continue
+            for k in ("X", "Y"):
+                v = nd.get(k)
+                if isinstance(v, str):
+                    interface_11.add(v)
+
+        out = {}
+        for nd in jiedian_A:
+            if int(nd.get("node_type", 0)) != 11:
+                continue
+            nid = str(nd.get("node_id"))
+            if nid in interface_11:
+                continue  # 排除塔头接口层
+            p = _get_xyz(nd)
+            if p:
+                out[nid] = p
+        return out
+
     """
     最终合并步骤：检测 A 线顶部和 B 线底部的重合节点，建立 ID 映射并替换。
     """
@@ -430,20 +455,60 @@ def reuse_ids_at_final(
                 out[str(nd.get("node_id"))] = p
         return out
 
-    A11 = collect_11(jiedian_A)
+##    A11 = collect_11(jiedian_A)
+    # ==== 新增：找 A 线塔身基部 Z ====
+    A11 = collect_A_body_base_11(jiedian_A, ganjian_A)
+    if not A11:
+        print("[reuse_ids] 未检测到塔身基部节点，跳过基部 ID 复用")
+        return
+
+    min_Z_A = min(p[2] for p in A11.values())
+
     B11 = collect_11(jiedian_B)
 
+
+    if not B11:
+        return
+
+    min_Z_B = min(p[2] for p in B11.values())
+
+
+
+
+
     # 寻找距离最近的一对点作为锚点
+    # best = (float("inf"), "", "")
+    # for bid, bp in B11.items():
+    #     for aid, ap in A11.items():
+    #         d = _dist3(bp, ap)
+    #         if d <= eps and d < best[0]:
+    #             best = (d, aid, bid)
+    # if not best[1] or not best[2]:
+    #     return
     best = (float("inf"), "", "")
     for bid, bp in B11.items():
         for aid, ap in A11.items():
+
+            # ====== 关键新增规则 ======
+            # 如果 B 点在基部附近，只允许匹配 A 线的基部节点
+
+            # if abs(bp[2] - min(p[2] for p in B11.values())) < 1e-3:
+            #     if abs(ap[2] - min_Z_A) > 1e-3:
+            #         continue
+            # =========================
+            if abs(bp[2] - min_Z_B) < 1e-3:
+                if abs(ap[2] - min_Z_A) > 1e-3:
+                    continue
+
             d = _dist3(bp, ap)
             if d <= eps and d < best[0]:
                 best = (d, aid, bid)
-    if not best[1] or not best[2]:
-        return
 
     A0, B0 = best[1], best[2]
+    if not A0 or not B0:
+        print("[reuse_ids] 未找到满足基部规则的匹配点，跳过 ID 复用")
+        return
+
     # 构建整个“家族”的映射（例如 10->20, 11->21 等对称点）
     fam_map = _build_family_id_map(B0, A0)
     _apply_id_map_family_to_B(fam_map, ganjian_B, jiedian_B, B0_id=B0)
@@ -524,7 +589,130 @@ def run(dual_dir: str, single_dir: str):
     3. 计算变换矩阵，将 B 线模型对齐到 A 线顶部
     4. 合并输出
     """
+
+    # 检查是否有双视图文件
+    dual_files = glob.glob(os.path.join(dual_dir, "*.txt"))
+    has_dual = len(dual_files) > 0
+
+    # 检查是否有单视图文件
+    single_files = glob.glob(os.path.join(single_dir, "*.txt"))
+    has_single = len(single_files) > 0
+
+    print(f"检测到数据类型：双视图={has_dual}, 单视图={has_single}")
+
+    # 场景1：只有双视图
+    if has_dual and not has_single:
+        print("场景：仅双视图(A线) - 输出塔身模型")
+        ganjian_A, jiedian_A, pinjie_A = run_dual_view(dual_dir)
+        return merge_and_print(ganjian_A, jiedian_A, pinjie_A, [], [])
+
+    # 场景2：只有单视图
+    if not has_dual and has_single:
+        print("场景：仅单视图(B线) - 输出塔头模型")
+        ganjian_B, jiedian_B, _, _, _, axis_map = run_single_view_B(single_dir)
+        if ganjian_B or jiedian_B:
+            return merge_and_print([], [], [], ganjian_B, jiedian_B)
+        else:
+            return [], [], []
+
+    # 场景3：双视图+单视图（完整流程）
+    if has_dual and has_single:
+        print("场景：双视图+单视图 - 桥接合并处理")
     ganjian_A, jiedian_A, pinjie_A = run_dual_view(dual_dir)
+    # ======================================================
+    # 【后处理】最低层节点 snapping 到最近基部节点（仅 A 线）
+    # 目的：修复 1905 / 1906 这类“基部端点漂移”的问题
+    # ======================================================
+
+    def snap_lowest_nodes_to_base(
+        ganjian: List[dict],
+        jiedian: List[dict],
+        z_eps: float = 1e-6,
+        xy_tol: float = 50.0,   # ⚠️ 可根据图纸尺度调整，建议 30~80
+    ):
+        # 1️⃣ 收集所有 node_id -> (x,y,z)
+        node_xyz = {}
+        for nd in jiedian:
+            p = _get_xyz(nd)
+            if p is not None:
+                node_xyz[str(nd["node_id"])] = p
+
+        if not node_xyz:
+            return
+
+        # 2️⃣ 找最低 Z
+        z_min = min(p[2] for p in node_xyz.values())
+
+        # 3️⃣ 基部节点（node_type == 11 且 Z≈z_min）
+        base_nodes = {
+            nid: p
+            for nid, p in node_xyz.items()
+            if abs(p[2] - z_min) < z_eps
+            and any(
+                str(nd.get("node_id")) == nid and int(nd.get("node_type", 0)) == 11
+                for nd in jiedian
+            )
+        }
+
+        if len(base_nodes) < 2:
+            return  # 没有可靠基部，直接跳过
+
+        # 4️⃣ 找“可疑节点”：Z≈z_min，但不是基部 11 节点
+        snap_map = {}  # bad_node_id -> base_node_id
+
+        for nid, (x, y, z) in node_xyz.items():
+            target_nodes = set()
+
+            for m in ganjian:
+                if str(m.get("member_id")) in {"1905", "1906"}:
+                    target_nodes.add(str(m.get("node1_id")))
+                    target_nodes.add(str(m.get("node2_id")))
+
+            for nid in target_nodes:
+                x, y, z = node_xyz[nid]
+                best = None
+                for bid, (bx, by, bz) in base_nodes.items():
+                    dxy = math.hypot(x - bx, y - by)
+                    if dxy < xy_tol and (best is None or dxy < best[0]):
+                        best = (dxy, bid)
+                if best:
+                    snap_map[nid] = best[1]
+
+            if nid in base_nodes:
+                continue
+
+            # 找最近的基部节点（XY 平面）
+            best = None
+            for bid, (bx, by, bz) in base_nodes.items():
+                dxy = math.hypot(x - bx, y - by)
+                if dxy <= xy_tol and (best is None or dxy < best[0]):
+                    best = (dxy, bid)
+
+            if best is not None:
+                snap_map[nid] = best[1]
+
+        if not snap_map:
+            return
+
+        print(f"[snap-base] 基部吸附节点映射: {snap_map}")
+
+        # 5️⃣ 重写杆件端点
+        for m in ganjian:
+            n1 = str(m.get("node1_id"))
+            n2 = str(m.get("node2_id"))
+            if n1 in snap_map:
+                m["node1_id"] = snap_map[n1]
+            if n2 in snap_map:
+                m["node2_id"] = snap_map[n2]
+
+        # 6️⃣ 删除被吸附的冗余节点
+        jiedian[:] = [
+            nd for nd in jiedian
+            if str(nd.get("node_id")) not in snap_map
+        ]
+
+    # 👉 执行 snapping（只对 A 线）
+    snap_lowest_nodes_to_base(ganjian_A, jiedian_A)
 
     ganjian_B, jiedian_B, _, _, _, axis_map = run_single_view_B(single_dir)
     if not ganjian_B and not jiedian_B:
@@ -576,8 +764,7 @@ def build_tower_body(tashen_dir):
 def main():
     """命令行入口，可选传入数据目录。"""
 
-    #default_data_directory = r"D:\Sanwei\zuobiao\TaShen\1E2-SDJ"
-    default_data_directory = r"D:\Sanwei\zuobiao\TaShen\J1"
+    default_data_directory = r"D:\SanWei\TaShen\test"
 
     if len(sys.argv) > 1:
         data_directory = sys.argv[1]
@@ -605,6 +792,19 @@ def main():
         print(f"生成节点数量: {len(jiedian)}")
         print(f"拼接信息数量: {len(pinjie)}")
         print("=" * 60)
+        
+        # 保存结果到文件供可视化使用
+        if ganjian or jiedian:
+            output_data = {
+                "ganjian": ganjian,
+                "jiedian": jiedian,
+                "pinjie": pinjie
+            }
+            output_file = "tower_output.json"
+            with open(output_file, 'w', encoding='utf-8') as f:
+                json.dump(output_data, f, ensure_ascii=False, indent=2)
+            print(f"\n✅ 结果已保存到 {output_file} (共 {len(ganjian)} 条杆件, {len(jiedian)} 个节点)")
+
 
         return ganjian, jiedian, pinjie
 
