@@ -451,7 +451,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
                 continue
 
             new_node_cnt += 1
-            node_id = f"{drawing_id}101{new_node_cnt}0"
+            node_id = f"{drawing_id}191{new_node_cnt}0"
             node_info = {
                 "node_id": node_id,
                 "point_2d": item["point_2d"]
@@ -478,7 +478,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
                 continue
 
             new_node_cnt += 1
-            node_id = f"{drawing_id}103{new_node_cnt}0"
+            node_id = f"{drawing_id}193{new_node_cnt}0"
             node_info = {
                 "node_id": node_id,
                 "point_2d": item["point_2d"]
@@ -550,7 +550,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
                 continue
 
             new_node_cnt += 1
-            node_id = f"{drawing_id}201{new_node_cnt}0"
+            node_id = f"{drawing_id}291{new_node_cnt}0"
             node_info = {
                 "node_id": node_id,
                 "point_2d": item["point_2d"]
@@ -577,7 +577,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
                 continue
 
             new_node_cnt += 1
-            node_id = f"{drawing_id}201{new_node_cnt}2"
+            node_id = f"{drawing_id}291{new_node_cnt}2"
             node_info = {
                 "node_id": node_id,
                 "point_2d": item["point_2d"]
@@ -639,7 +639,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
                 continue
 
             new_node_cnt += 1
-            node_id = f"{drawing_id}301{new_node_cnt}0"
+            node_id = f"{drawing_id}391{new_node_cnt}0"
             node_info = {
                 "node_id": node_id,
                 "point_2d": item["point_2d"]
@@ -665,7 +665,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
                 continue
 
             new_node_cnt += 1
-            node_id = f"{drawing_id}301{new_node_cnt}2"
+            node_id = f"{drawing_id}391{new_node_cnt}2"
             node_info = {
                 "node_id": node_id,
                 "point_2d": item["point_2d"]
@@ -785,7 +785,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
                 continue
 
             new_node_cnt += 1
-            node_id = f"{drawing_id}101{new_node_cnt}0"
+            node_id = f"{drawing_id}191{new_node_cnt}0"
             node_info = {
                 "node_id": node_id,
                 "point_2d": item["point_2d"]
@@ -812,7 +812,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
                 continue
 
             new_node_cnt += 1
-            node_id = f"{drawing_id}103{new_node_cnt}0"
+            node_id = f"{drawing_id}193{new_node_cnt}0"
             node_info = {
                 "node_id": node_id,
                 "point_2d": item["point_2d"]
@@ -883,7 +883,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
                 continue
 
             new_node_cnt += 1
-            node_id = f"{drawing_id}201{new_node_cnt}0"
+            node_id = f"{drawing_id}291{new_node_cnt}0"
             node_info = {
                 "node_id": node_id,
                 "point_2d": item["point_2d"]
@@ -910,7 +910,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
                 continue
 
             new_node_cnt += 1
-            node_id = f"{drawing_id}201{new_node_cnt}2"
+            node_id = f"{drawing_id}291{new_node_cnt}2"
             node_info = {
                 "node_id": node_id,
                 "point_2d": item["point_2d"]
@@ -971,7 +971,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
                 continue
 
             new_node_cnt += 1
-            node_id = f"{drawing_id}301{new_node_cnt}0"
+            node_id = f"{drawing_id}391{new_node_cnt}0"
             node_info = {
                 "node_id": node_id,
                 "point_2d": item["point_2d"]
@@ -998,7 +998,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
                 continue
 
             new_node_cnt += 1
-            node_id = f"{drawing_id}301{new_node_cnt}2"
+            node_id = f"{drawing_id}391{new_node_cnt}2"
             node_info = {
                 "node_id": node_id,
                 "point_2d": item["point_2d"]
@@ -1050,13 +1050,16 @@ def trans(file_path, drawing_id, data1, drawing_type):
         }
         ganjian.append(new_ganjian)
 
-   # ===== J1 担架对称性生成 =====
+   #===== J1 担架对称性生成 =====
     if drawing_type == "J1":
         for g in ganjian:
             if g.get("symmetry_type") == 2:
                 g["symmetry_type"] = 4
             elif g.get("symmetry_type") == 0:
                 g["symmetry_type"] = 1
+        for j in jiedian:
+            if j.get("symmetry_type") == 2:
+                j["symmetry_type"] = 4
 
 def work(file_path, data, drawing_type):
     if drawing_type=="1E2-SDJ":

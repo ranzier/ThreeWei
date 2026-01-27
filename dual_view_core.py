@@ -11,28 +11,37 @@ Point3D: TypeAlias = Tuple[float, float, float]
 Seg3D: TypeAlias = List[Point3D]
 Model3DData: TypeAlias = Dict[str, Seg3D]
 
+
 def _collect_endpoints(segdict: Model3DData) -> List[Point3D]:
     pts: List[Point3D] = []
     for seg in segdict.values():
         if seg and len(seg) >= 2:
-            pts.append(seg[0]); pts.append(seg[1])
+            pts.append(seg[0]);
+            pts.append(seg[1])
     return pts
+
 
 def center_props(front3d: Model3DData, right3d: Model3DData):
     """返回 ((x_center, y_center, 0), z_min)"""
     all_pts = _collect_endpoints(front3d) + _collect_endpoints(right3d)
     if not all_pts: return (0.0, 0.0, 0.0), 0.0
-    xs = [p[0] for p in all_pts]; ys = [p[1] for p in all_pts]; zs = [p[2] for p in all_pts]
+    xs = [p[0] for p in all_pts];
+    ys = [p[1] for p in all_pts];
+    zs = [p[2] for p in all_pts]
     x_center = (min(xs) + max(xs)) / 2.0
     y_center = (min(ys) + max(ys)) / 2.0
     z_min = min(zs)
     return (x_center, y_center, 0.0), z_min
 
-def translate_model(front3d: Model3DData, right3d: Model3DData, translation_target: Tuple[float,float,float]):
+
+def translate_model(front3d: Model3DData, right3d: Model3DData, translation_target: Tuple[float, float, float]):
     dx, dy, dz = -translation_target[0], -translation_target[1], -translation_target[2]
+
     def _apply(d: Model3DData) -> Model3DData:
-        return {gid: [(p[0]+dx, p[1]+dy, p[2]+dz) for p in seg] for gid, seg in d.items()}
+        return {gid: [(p[0] + dx, p[1] + dy, p[2] + dz) for p in seg] for gid, seg in d.items()}
+
     return _apply(front3d), _apply(right3d)
+
 
 def top_xmid_and_range(horiz_dict: Dict[str, List[Tuple[float, float]]],
                        preferred_key: Optional[str] = None,
@@ -41,10 +50,13 @@ def top_xmid_and_range(horiz_dict: Dict[str, List[Tuple[float, float]]],
                        tol_ratio: float = 0.05,
                        y_eps: float = 1e-6):
     if not horiz_dict: return None, None, None
+
     def _seg_info(seg):
         (x1, y1), (x2, y2) = seg[0], seg[1]
-        length = abs(x2 - x1); y_mean = (y1 + y2) / 2.0
+        length = abs(x2 - x1);
+        y_mean = (y1 + y2) / 2.0
         return x1, y1, x2, y2, length, y_mean
+
     chosen_key, seg = None, None
     if preferred_key and preferred_key in horiz_dict:
         chosen_key, seg = preferred_key, horiz_dict[preferred_key]
@@ -52,45 +64,51 @@ def top_xmid_and_range(horiz_dict: Dict[str, List[Tuple[float, float]]],
         cand = []
         for k, s in horiz_dict.items():
             if not s or len(s) < 2: continue
-            x1,y1,x2,y2,L,ym = _seg_info(s)
+            x1, y1, x2, y2, L, ym = _seg_info(s)
             if abs(y1 - y_top) <= y_eps and abs(y2 - y_top) <= y_eps:
                 cand.append((L, k, s))
         if cand:
-            cand.sort(reverse=True); _, chosen_key, seg = cand[0]
+            cand.sort(reverse=True);
+            _, chosen_key, seg = cand[0]
     if seg is None:
         best = None
-        for k,s in horiz_dict.items():
+        for k, s in horiz_dict.items():
             if not s or len(s) < 2: continue
-            x1,y1,x2,y2,L,ym = _seg_info(s)
+            x1, y1, x2, y2, L, ym = _seg_info(s)
             if (best is None) or (ym > best[0]): best = (ym, k, s)
         if best: _, chosen_key, seg = best
     if seg is None or len(seg) < 2: return None, None, None
-    x1,y1,x2,y2,seg_len,_ = _seg_info(seg)
+    x1, y1, x2, y2, seg_len, _ = _seg_info(seg)
     x_mid = (x1 + x2) / 2.0
-    tol = float(tol_abs) if (tol_abs is not None) else (abs(seg_len) * (tol_ratio if tol_ratio is not None else 0.05) or 1.0)
+    tol = float(tol_abs) if (tol_abs is not None) else (
+                abs(seg_len) * (tol_ratio if tol_ratio is not None else 0.05) or 1.0)
     x_range = (x_mid - tol, x_mid + tol)
-    meta = {"key": chosen_key, "seg_len": seg_len, "y": (y1+y2)/2.0, "tol": tol, "endpoints": [(x1,y1),(x2,y2)]}
+    meta = {"key": chosen_key, "seg_len": seg_len, "y": (y1 + y2) / 2.0, "tol": tol, "endpoints": [(x1, y1), (x2, y2)]}
     return x_mid, x_range, meta
 
+
 # ====== X 型构件筛选 ======
-def select_x_type(rest_dict: Dict[str, List[Tuple[float, float]]], x_range: Tuple[float, float]) -> Dict[str, List[Tuple[float, float]]]:
+def select_x_type(rest_dict: Dict[str, List[Tuple[float, float]]], x_range: Tuple[float, float]) -> Dict[
+    str, List[Tuple[float, float]]]:
     if not rest_dict or not x_range: return {}
-    lo, hi = x_range; out = {}
+    lo, hi = x_range;
+    out = {}
     for k, seg in rest_dict.items():
         if not seg or len(seg) < 2: continue
-        (x1,y1),(x2,y2) = seg[0],seg[1]
+        (x1, y1), (x2, y2) = seg[0], seg[1]
         x_mid = (x1 + x2) / 2.0
         if lo <= x_mid <= hi: out[str(k)] = [tuple(seg[0]), tuple(seg[1])]
     return out
+
 
 # ====== 按指定杆件实长缩放 ======
 def scale_by_member(final_coords_map: Dict[str, List[Tuple[float, float, float]]], target_id: str, real_length: float):
     p1, p2 = final_coords_map.get(target_id, (None, None))
     if p1 is None or p2 is None: raise KeyError(f"杆件ID '{target_id}' 不存在。")
-    L = math.sqrt(sum((a-b)**2 for a,b in zip(p1, p2)))
+    L = math.sqrt(sum((a - b) ** 2 for a, b in zip(p1, p2)))
     if L < 1e-9: raise ValueError("所选杆件长度过小。")
     s = real_length / L
-    return {mid: [(p[0]*s, p[1]*s, p[2]*s) for p in seg] for mid, seg in final_coords_map.items()}
+    return {mid: [(p[0] * s, p[1] * s, p[2] * s) for p in seg] for mid, seg in final_coords_map.items()}
 
 
 # ====== Loader ======
@@ -139,9 +157,11 @@ def _split_blocks_by_headers(lines: List[str]):
         s = raw.strip()
         low = s.lower()
         if low in _FRONT_ALIASES:
-            current = "front"; continue
+            current = "front";
+            continue
         if low in _RIGHT_ALIASES:
-            current = "right"; continue
+            current = "right";
+            continue
         if not s or current is None:
             continue
         blocks[current].append(s)
@@ -185,11 +205,13 @@ def load_and_parse_data(filepath: str) -> Tuple[CoordDict, CoordDict]:
 
     return front, right
 
+
 # ====== Processors (原 processors.py) ======
 # processors.py —— 清洗、分类与几何修正
 from typing import Dict, List, Tuple, Optional
 import math
 import statistics
+
 
 # Coord 和 CoordDict 已在文件开头定义
 
@@ -199,7 +221,8 @@ import statistics
 def _len2(p1: Coord, p2: Coord) -> float:
     dx = float(p1[0]) - float(p2[0])
     dy = float(p1[1]) - float(p2[1])
-    return dx*dx + dy*dy
+    return dx * dx + dy * dy
+
 
 def clean_view(view: CoordDict, view_name: str, round_ndigits: Optional[int] = None) -> CoordDict:
     """
@@ -221,6 +244,7 @@ def clean_view(view: CoordDict, view_name: str, round_ndigits: Optional[int] = N
         out[str(k)] = [p1, p2]
     return out
 
+
 # ----------------
 # 分类：支撑与横向
 # ----------------
@@ -231,10 +255,11 @@ def find_supports(view: CoordDict) -> CoordDict:
     out: CoordDict = {}
     for k, seg in view.items():
         ks = str(k)
-        if ks.isdigit() and len(ks) >= 2 and ks[-2:] in {"01","02","03","04"} and "_" not in ks:
+        if ks.isdigit() and len(ks) >= 2 and ks[-2:] in {"01", "02", "03", "04"} and "_" not in ks:
             out[ks] = [(float(seg[0][0]), float(seg[0][1])),
                        (float(seg[1][0]), float(seg[1][1]))]
     return out
+
 
 def find_horizontals(view: CoordDict, tol_y: float, exclude_support: bool = True) -> CoordDict:
     """
@@ -245,30 +270,32 @@ def find_horizontals(view: CoordDict, tol_y: float, exclude_support: bool = True
     for k, seg in view.items():
         if exclude_support:
             ks = str(k)
-            if ks.isdigit() and len(ks) >= 2 and ks[-2:] in {"01","02","03","04"} and "_" not in ks:
+            if ks.isdigit() and len(ks) >= 2 and ks[-2:] in {"01", "02", "03", "04"} and "_" not in ks:
                 continue
-        (x1,y1),(x2,y2) = seg
-        if abs(float(y1)-float(y2)) <= float(tol_y):
+        (x1, y1), (x2, y2) = seg
+        if abs(float(y1) - float(y2)) <= float(tol_y):
             out[str(k)] = [(float(x1), float(y1)), (float(x2), float(y2))]
     return out
+
 
 # ----------------
 # 支撑直线模型
 # ----------------
 class Line:
-    __slots__ = ("k","b","vertical_x","ymin","ymax","id")
+    __slots__ = ("k", "b", "vertical_x", "ymin", "ymax", "id")
+
     def __init__(self, p1: Coord, p2: Coord, gid: str):
-        x1,y1 = float(p1[0]), float(p1[1])
-        x2,y2 = float(p2[0]), float(p2[1])
+        x1, y1 = float(p1[0]), float(p1[1])
+        x2, y2 = float(p2[0]), float(p2[1])
         self.id = gid
-        self.ymin, self.ymax = (min(y1,y2), max(y1,y2))
-        if abs(x1-x2) < 1e-12:
+        self.ymin, self.ymax = (min(y1, y2), max(y1, y2))
+        if abs(x1 - x2) < 1e-12:
             self.k = None
             self.b = None
             self.vertical_x = x1
         else:
-            self.k = (y2-y1)/(x2-x1)
-            self.b = y1 - self.k*x1
+            self.k = (y2 - y1) / (x2 - x1)
+            self.b = y1 - self.k * x1
             self.vertical_x = None
 
     def x_at(self, y: float) -> float:
@@ -282,17 +309,19 @@ class Line:
         return (y - float(self.b or 0.0)) / self.k
 
     def x_mid(self) -> float:
-        ym = (self.ymin + self.ymax)/2.0
+        ym = (self.ymin + self.ymax) / 2.0
         return self.x_at(ym)
+
 
 def build_support_models(view_support: CoordDict) -> List[Line]:
     models: List[Line] = []
-    for gid, (p1,p2) in view_support.items():
-        ln = Line(p1,p2,str(gid))
+    for gid, (p1, p2) in view_support.items():
+        ln = Line(p1, p2, str(gid))
         models.append(ln)
     # 按“中心 x”排序，方便左右取极值
     models.sort(key=lambda L: L.x_mid())
     return models
+
 
 def _extreme_x_at(models: List[Line], y: float) -> Tuple[float, float]:
     """
@@ -305,6 +334,7 @@ def _extreme_x_at(models: List[Line], y: float) -> Tuple[float, float]:
     if not xs:
         return (0.0, 0.0)
     return (min(xs), max(xs))
+
 
 # ----------------
 # 旧：支撑统一到各自视图的全局上下边界（保持斜率不变）
@@ -321,7 +351,7 @@ def correct_paired_horizontals(front_horizontal: CoordDict,
         return front_horizontal, right_horizontal
 
     def _to_list(hh: CoordDict):
-        return [(k, (seg[0][1]+seg[1][1])/2.0) for k, seg in hh.items()]
+        return [(k, (seg[0][1] + seg[1][1]) / 2.0) for k, seg in hh.items()]
 
     fl = sorted(_to_list(front_horizontal), key=lambda t: t[1])
     rl = sorted(_to_list(right_horizontal), key=lambda t: t[1])
@@ -329,8 +359,9 @@ def correct_paired_horizontals(front_horizontal: CoordDict,
     n = min(len(fl), len(rl))
     # 1) 成对处理
     for i in range(n):
-        kf, yf = fl[i]; kr, yr = rl[i]
-        y = (yf + yr)/2.0
+        kf, yf = fl[i];
+        kr, yr = rl[i]
+        y = (yf + yr) / 2.0
 
         Lf, Rf = _extreme_x_at(front_support_models, y)
         Lr, Rr = _extreme_x_at(right_support_models, y)
@@ -346,26 +377,28 @@ def correct_paired_horizontals(front_horizontal: CoordDict,
         for k, seg in list(hh.items()):
             if k in used_keys:
                 continue
-            y = (seg[0][1]+seg[1][1])/2.0
+            y = (seg[0][1] + seg[1][1]) / 2.0
             L, R = _extreme_x_at(models, y)
             if round_to_int:
                 y, L, R = round(y), round(L), round(R)
             hh[str(k)] = [(L, y), (R, y)]
-    _project_rest(front_horizontal, front_support_models, {kf for kf,_ in fl[:n]})
-    _project_rest(right_horizontal, right_support_models, {kr for kr,_ in rl[:n]})
+
+    _project_rest(front_horizontal, front_support_models, {kf for kf, _ in fl[:n]})
+    _project_rest(right_horizontal, right_support_models, {kr for kr, _ in rl[:n]})
 
     return front_horizontal, right_horizontal
+
 
 # ================================
 # 新增：跨视图成对统一支撑斜率 + 顶横杆等长 + 支撑扩展 + 仅余横杆交点
 # ================================
 
 def match_support_slopes(front_support: CoordDict,
-                                     right_support: CoordDict,
-                                     strategy: str = "mean",
-                                     unify_bounds: bool = True,
-                                     round_to_int: bool = False,
-                                     y_round_to_int: bool = False) -> Tuple[CoordDict, CoordDict]:
+                         right_support: CoordDict,
+                         strategy: str = "mean",
+                         unify_bounds: bool = True,
+                         round_to_int: bool = False,
+                         y_round_to_int: bool = False) -> Tuple[CoordDict, CoordDict]:
     """
     跨视图“成对”统一支撑斜率：以左右极值支撑配对（左↔左、右↔右），
     将配对后的斜率 k 一致（默认取均值），并把端点统一到跨视图全局 ymin/ymax。
@@ -405,7 +438,7 @@ def match_support_slopes(front_support: CoordDict,
             return k1
         return (k1 + k2) / 2.0
 
-    kL = _target_k(F_left.k,  R_left.k)
+    kL = _target_k(F_left.k, R_left.k)
     kR = _target_k(F_right.k, R_right.k)
 
     def _rebuild(line: Line, k_new):
@@ -430,8 +463,8 @@ def match_support_slopes(front_support: CoordDict,
 
     front_support = dict(front_support)
     right_support = dict(right_support)
-    front_support[F_left.id]  = _rebuild(F_left,  kL)
-    right_support[R_left.id]  = _rebuild(R_left,  kL)
+    front_support[F_left.id] = _rebuild(F_left, kL)
+    right_support[R_left.id] = _rebuild(R_left, kL)
     front_support[F_right.id] = _rebuild(F_right, kR)
     right_support[R_right.id] = _rebuild(R_right, kR)
     return front_support, right_support
@@ -439,8 +472,9 @@ def match_support_slopes(front_support: CoordDict,
 
 def _highest_horizontal_key(view_h: CoordDict) -> Optional[str]:
     if not view_h: return None
-    items = sorted(view_h.items(), key=lambda kv: (kv[1][0][1]+kv[1][1][1])/2.0)  # y越小越高
+    items = sorted(view_h.items(), key=lambda kv: (kv[1][0][1] + kv[1][1][1]) / 2.0)  # y越小越高
     return items[0][0] if items else None
+
 
 def _xset_at(models: List[Line], y: float) -> List[float]:
     xs = [m.x_at(y) for m in models]
@@ -448,12 +482,13 @@ def _xset_at(models: List[Line], y: float) -> List[float]:
     xs.sort()
     return xs
 
+
 def _best_pair_near_width(Xs: List[float], target: float) -> Optional[Tuple[float, float]]:
     if len(Xs) < 2: return None
     C = (min(Xs) + max(Xs)) / 2.0
     best = None
-    for i in range(len(Xs)-1):
-        for j in range(i+1, len(Xs)):
+    for i in range(len(Xs) - 1):
+        for j in range(i + 1, len(Xs)):
             L, R = Xs[i], Xs[j]
             w = R - L
             err = abs(w - target)
@@ -467,11 +502,12 @@ def _best_pair_near_width(Xs: List[float], target: float) -> Optional[Tuple[floa
     _, _, L, R = best
     return L, R
 
+
 def plan_top_span(
-    front_support_models: List[Line], right_support_models: List[Line],
-    front_horizontal: CoordDict, right_horizontal: CoordDict,
-    length_mode: str = "min",            # "min" | "mean" | "front" | "right"
-    pair_mode: str = "extreme"           # 新增："extreme"=最外侧成对；"best"=原先最接近目标宽度
+        front_support_models: List[Line], right_support_models: List[Line],
+        front_horizontal: CoordDict, right_horizontal: CoordDict,
+        length_mode: str = "min",  # "min" | "mean" | "front" | "right"
+        pair_mode: str = "extreme"  # 新增："extreme"=最外侧成对；"best"=原先最接近目标宽度
 ):
     """
     计算“等长顶横杆”的共同顶高 y_top 以及两视图端点 L/R。
@@ -573,12 +609,12 @@ def plan_top_span(
 
 
 def expand_to_top_span(
-    front_support: CoordDict, right_support: CoordDict,
-    front_support_models: List[Line], right_support_models: List[Line],
-    y_top: float, Lf: float, Rf: float, Lr: float, Rr: float,
-    unify_bounds: bool = True,
-    round_to_int: bool = False,
-    y_round_to_int: bool = False
+        front_support: CoordDict, right_support: CoordDict,
+        front_support_models: List[Line], right_support_models: List[Line],
+        y_top: float, Lf: float, Rf: float, Lr: float, Rr: float,
+        unify_bounds: bool = True,
+        round_to_int: bool = False,
+        y_round_to_int: bool = False
 ) -> Tuple[CoordDict, CoordDict]:
     """
     在保持“已统一”的左右支撑斜率不变的前提下，重建左右最外侧支撑，使其在 y_top 处通过 (Lf,Rf)/(Lr,Rr)。
@@ -605,7 +641,10 @@ def expand_to_top_span(
             kk = line_model.k
             if kk is None or abs(kk) < 1e-12:
                 kk = 1e-12 if (kk or 0.0) >= 0 else -1e-12
-            def x_at(y): return x_at_y_top + (y - y_top) / kk
+
+            def x_at(y):
+                return x_at_y_top + (y - y_top) / kk
+
             x_top = x_at(gmin if unify_bounds else line_model.ymin)
             x_bot = x_at(gmax if unify_bounds else line_model.ymax)
         y1 = (gmin if unify_bounds else line_model.ymin)
@@ -620,21 +659,21 @@ def expand_to_top_span(
     right_support = dict(right_support)
 
     if Lf is not None and Rf is not None:
-        front_support[F_left.id]  = _rebuild_through(F_left,  Lf)
+        front_support[F_left.id] = _rebuild_through(F_left, Lf)
         front_support[F_right.id] = _rebuild_through(F_right, Rf)
     if Lr is not None and Rr is not None:
-        right_support[R_left.id]  = _rebuild_through(R_left,  Lr)
+        right_support[R_left.id] = _rebuild_through(R_left, Lr)
         right_support[R_right.id] = _rebuild_through(R_right, Rr)
 
     return front_support, right_support
 
 
 def correct_horizontals(
-    front_support_models: List[Line], right_support_models: List[Line],
-    front_horizontal: CoordDict, right_horizontal: CoordDict,
-    skip_front_keys: Optional[set] = None,
-    skip_right_keys: Optional[set] = None,
-    round_to_int: bool = False
+        front_support_models: List[Line], right_support_models: List[Line],
+        front_horizontal: CoordDict, right_horizontal: CoordDict,
+        skip_front_keys: Optional[set] = None,
+        skip_right_keys: Optional[set] = None,
+        round_to_int: bool = False
 ) -> Tuple[CoordDict, CoordDict]:
     """
     仅对“去掉顶横杆后的剩余横杆”执行交点强制（包装原 correct_paired_horizontals 逻辑），
@@ -643,10 +682,10 @@ def correct_horizontals(
     skip_front_keys = skip_front_keys or set()
     skip_right_keys = skip_right_keys or set()
 
-    fh_keep = {k:v for k,v in front_horizontal.items() if k in skip_front_keys}
-    rh_keep = {k:v for k,v in right_horizontal.items() if k in skip_right_keys}
-    fh_rest = {k:v for k,v in front_horizontal.items() if k not in skip_front_keys}
-    rh_rest = {k:v for k,v in right_horizontal.items() if k not in skip_right_keys}
+    fh_keep = {k: v for k, v in front_horizontal.items() if k in skip_front_keys}
+    rh_keep = {k: v for k, v in right_horizontal.items() if k in skip_right_keys}
+    fh_rest = {k: v for k, v in front_horizontal.items() if k not in skip_front_keys}
+    rh_rest = {k: v for k, v in right_horizontal.items() if k not in skip_right_keys}
 
     fh_rest2, rh_rest2 = correct_paired_horizontals(
         fh_rest, rh_rest, front_support_models, right_support_models, round_to_int=round_to_int
@@ -659,7 +698,7 @@ def correct_horizontals(
 # processors.py (替换掉旧的 enforce_2d_view_symmetry 函数)
 
 def enforce_symmetry(support_orig: CoordDict,
-                             horizontal_orig: CoordDict) -> Tuple[CoordDict, CoordDict]:
+                     horizontal_orig: CoordDict) -> Tuple[CoordDict, CoordDict]:
     """
     在2D视图层面，强制支撑杆件和横向杆件关于其自身的中心垂直线 (x=a) 对称。
     这个函数会确保修正后的横向杆件端点精确地落在修正后的支撑杆件上，
@@ -765,7 +804,7 @@ def enforce_symmetry(support_orig: CoordDict,
 # 新增：强制所有支撑顶端对齐至最高横杆
 # ================================
 def align_to_top(support: CoordDict,
-                                     horizontal: CoordDict) -> CoordDict:
+                 horizontal: CoordDict) -> CoordDict:
     """
     将一个视图内的所有支撑杆件进行“收顶”处理。
 
@@ -827,20 +866,24 @@ def align_to_top(support: CoordDict,
 
     return new_support
 
+
 # ====== Reconstruct3D (原 reconstruct3d.py) ======
 # reconstruct3d.py — 三维重建算法
 from typing import Dict, List, Tuple, Optional
 import math
 
+
 # 类型别名已在文件开头定义
 
 # ------------- 文档法：面1/面2角度映射（你的图公式） -------------
 
-def _mid(ptA: Coord, ptB: Coord) -> Tuple[float,float]:
-    return ((float(ptA[0]) + float(ptB[0]))/2.0, (float(ptA[1]) + float(ptB[1]))/2.0)
+def _mid(ptA: Coord, ptB: Coord) -> Tuple[float, float]:
+    return ((float(ptA[0]) + float(ptB[0])) / 2.0, (float(ptA[1]) + float(ptB[1])) / 2.0)
+
 
 def _clip(v: float, lo: float = -1.0, hi: float = 1.0) -> float:
     return max(lo, min(hi, v))
+
 
 def _select_top_horizontal(view_h: CoordDict, axis: str = "x") -> Optional[Tuple[Coord, Coord]]:
     """
@@ -855,13 +898,14 @@ def _select_top_horizontal(view_h: CoordDict, axis: str = "x") -> Optional[Tuple
     seg = items[0][1]
     (xa, za), (xb, zb) = (seg[0], seg[1])
     if axis == "x":
-        return ( (xa,za), (xb,zb) ) if xa <= xb else ( (xb,zb), (xa,za) )
+        return ((xa, za), (xb, zb)) if xa <= xb else ((xb, zb), (xa, za))
     else:  # axis == 'y'
         ya, yb = xa, xb  # 这里 seg 中的第一个元素是 y（侧面坐标是 (y,z) ）
         if ya <= yb:
-            return ( (xa,za), (xb,zb) )
+            return ((xa, za), (xb, zb))
         else:
-            return ( (xb,zb), (xa,za) )
+            return ((xb, zb), (xa, za))
+
 
 def _bottom_from_support(view_support: CoordDict, axis: str = "x") -> Optional[Tuple[Coord, Coord]]:
     """
@@ -871,7 +915,7 @@ def _bottom_from_support(view_support: CoordDict, axis: str = "x") -> Optional[T
         return None
     bottom_pts: List[Coord] = []
     for seg in view_support.values():
-        (x1,z1),(x2,z2) = seg
+        (x1, z1), (x2, z2) = seg
         # 取“低端点”（z 向下为正 => 取 z 较大的端点）
         if float(z1) >= float(z2):
             bottom_pts.append((float(x1), float(z1)))
@@ -888,7 +932,6 @@ def _bottom_from_support(view_support: CoordDict, axis: str = "x") -> Optional[T
     return (left, right)
 
 
-
 def extract_bases_front(front_support: CoordDict, front_horizontal: CoordDict):
     """
     返回： (x1,z1),(x2,z2),(x3,z3),(x4,z4)
@@ -898,10 +941,10 @@ def extract_bases_front(front_support: CoordDict, front_horizontal: CoordDict):
     bottom = _bottom_from_support(front_support, axis="x")
     if top is None or bottom is None:
         return None
-    (x1,z1),(x2,z2) = top
-    (x4,z4),(x3,z3) = bottom  # 注意：bottom 函数返回已按左右排序，这里保持 (左=4, 右=3)
-    return ( (float(x1),float(z1)), (float(x2),float(z2)),
-             (float(x3),float(z3)), (float(x4),float(z4)) )
+    (x1, z1), (x2, z2) = top
+    (x4, z4), (x3, z3) = bottom  # 注意：bottom 函数返回已按左右排序，这里保持 (左=4, 右=3)
+    return ((float(x1), float(z1)), (float(x2), float(z2)),
+            (float(x3), float(z3)), (float(x4), float(z4)))
 
 
 def extract_bases_side(right_support: CoordDict, right_horizontal: CoordDict):
@@ -912,11 +955,10 @@ def extract_bases_side(right_support: CoordDict, right_horizontal: CoordDict):
     bottom = _bottom_from_support(right_support, axis="y")
     if top is None or bottom is None:
         return None
-    (y5,z5),(y6,z6) = top
-    (y7,z7),(y8,z8) = bottom
-    return ( (float(y5),float(z5)), (float(y6),float(z6)),
-             (float(y7),float(z7)), (float(y8),float(z8)) )
-
+    (y5, z5), (y6, z6) = top
+    (y7, z7), (y8, z8) = bottom
+    return ((float(y5), float(z5)), (float(y6), float(z6)),
+            (float(y7), float(z7)), (float(y8), float(z8)))
 
 
 def compute_heights_and_angles(front_bases, side_bases):
@@ -926,53 +968,56 @@ def compute_heights_and_angles(front_bases, side_bases):
     - h_front, h_side （按图2/图3的“中点距离”公式）
     - θ, δ （按图4/图5的 cos 公式；实现用 arccos+裁剪）
     """
-    (x1,z1),(x2,z2),(x3,z3),(x4,z4) = front_bases
-    (y5,z5),(y6,z6),(y7,z7),(y8,z8) = side_bases
+    (x1, z1), (x2, z2), (x3, z3), (x4, z4) = front_bases
+    (y5, z5), (y6, z6), (y7, z7), (y8, z8) = side_bases
 
     # 顶面 z 平均
-    z_topF = (z1 + z2)/2.0
-    z_topS = (z5 + z6)/2.0
+    z_topF = (z1 + z2) / 2.0
+    z_topS = (z5 + z6) / 2.0
 
     # 高度（等腰梯形：上下底中点的欧氏距离）
-    xm_top, zm_top   = (x1 + x2)/2.0, (z1 + z2)/2.0
-    xm_bottom, zm_bottom = (x3 + x4)/2.0, (z3 + z4)/2.0
+    xm_top, zm_top = (x1 + x2) / 2.0, (z1 + z2) / 2.0
+    xm_bottom, zm_bottom = (x3 + x4) / 2.0, (z3 + z4) / 2.0
     h_front = math.hypot(xm_top - xm_bottom, zm_top - zm_bottom)
 
-    ym_top, zm_top_s   = (y5 + y6)/2.0, (z5 + z6)/2.0
-    ym_bottom, zm_bottom_s = (y7 + y8)/2.0, (z7 + z8)/2.0
+    ym_top, zm_top_s = (y5 + y6) / 2.0, (z5 + z6) / 2.0
+    ym_bottom, zm_bottom_s = (y7 + y8) / 2.0, (z7 + z8) / 2.0
     h_side = math.hypot(ym_top - ym_bottom, zm_top_s - zm_bottom_s)
 
     eps = 1e-9
     h_front = max(h_front, eps)
-    h_side  = max(h_side, eps)
+    h_side = max(h_side, eps)
 
     # 角度（按你的图公式）
     # θ：用侧面上/下底长度差（|y8-y7| - |y6-y5|） / (2 h_front)
-    cos_theta = _clip( (abs(y8 - y7) - abs(y6 - y5)) / (2.0 * h_front) )
+    cos_theta = _clip((abs(y8 - y7) - abs(y6 - y5)) / (2.0 * h_front))
     theta = math.acos(cos_theta)
 
     # δ：用正面上/下底长度差（|x3-x4| - |x1-x2|） / (2 h_side)
-    cos_delta = _clip( (abs(x3 - x4) - abs(x1 - x2)) / (2.0 * h_side) )
+    cos_delta = _clip((abs(x3 - x4) - abs(x1 - x2)) / (2.0 * h_side))
     delta = math.acos(cos_delta)
 
     return (z_topF, z_topS, h_front, h_side, theta, delta)
 
-def _norm_front_point(x: float, z: float, x4: float, z_topF: float) -> Tuple[float,float]:
+
+def _norm_front_point(x: float, z: float, x4: float, z_topF: float) -> Tuple[float, float]:
     # 归一化：x_f'' = x - x4； z1'' = z - z_topF（向下为正，取非负）
     xf2 = float(x) - float(x4)
     z1p = float(z) - float(z_topF)
     return xf2, z1p
 
-def _norm_side_point(y: float, z: float, y7: float, z_topS: float) -> Tuple[float,float]:
+
+def _norm_side_point(y: float, z: float, y7: float, z_topS: float) -> Tuple[float, float]:
     # 归一化：y_s'' = y - y7； z2'' = z - z_topS（向下为正，取非负）
     ys2 = float(y) - float(y7)
     z2p = float(z) - float(z_topS)
     return ys2, z2p
 
+
 def reconstruct3d_front(front_total: CoordDict,
-                            front_support: CoordDict,
-                            front_horizontal: CoordDict,
-                            side_bases) -> Dict[str, List[Point3D]]:
+                        front_support: CoordDict,
+                        front_horizontal: CoordDict,
+                        side_bases) -> Dict[str, List[Point3D]]:
     """
     文档法 — 面1（正面）：
       对任一点 (x_f'', z1'') ：(X, Y, Z) = (x_f'', -|z1''| cosθ, |z1''| sinθ)
@@ -983,16 +1028,16 @@ def reconstruct3d_front(front_total: CoordDict,
     if front_bases is None:
         return {}
 
-    (x1,z1),(x2,z2),(x3,z3),(x4,z4) = front_bases
+    (x1, z1), (x2, z2), (x3, z3), (x4, z4) = front_bases
     # 侧面四点（传入）
-    (y5,z5),(y6,z6),(y7,z7),(y8,z8) = side_bases
+    (y5, z5), (y6, z6), (y7, z7), (y8, z8) = side_bases
 
     z_topF, z_topS, h_front, h_side, theta, delta = compute_heights_and_angles(front_bases, side_bases)
 
     out: Dict[str, List[Point3D]] = {}
     for gid, seg in front_total.items():
         pts: List[Point3D] = []
-        for (x,z) in seg:
+        for (x, z) in seg:
             xf2, z1p = _norm_front_point(x, z, x4, z_topF)
             X = xf2
             Y = - z1p * math.cos(theta)
@@ -1001,10 +1046,11 @@ def reconstruct3d_front(front_total: CoordDict,
         out[f"F_{gid}"] = pts
     return out
 
+
 def reconstruct3d_right(right_total: CoordDict,
-                            right_support: CoordDict,
-                            right_horizontal: CoordDict,
-                            front_bases) -> Dict[str, List[Point3D]]:
+                        right_support: CoordDict,
+                        right_horizontal: CoordDict,
+                        front_bases) -> Dict[str, List[Point3D]]:
     """
     文档法 — 面2（右侧面）：
       对任一点 (y_s'', z2'') ：
@@ -1015,17 +1061,17 @@ def reconstruct3d_right(right_total: CoordDict,
     if side_bases is None:
         return {}
 
-    (x1,z1),(x2,z2),(x3,z3),(x4,z4) = front_bases
-    (y5,z5),(y6,z6),(y7,z7),(y8,z8) = side_bases
+    (x1, z1), (x2, z2), (x3, z3), (x4, z4) = front_bases
+    (y5, z5), (y6, z6), (y7, z7), (y8, z8) = side_bases
     z_topF, z_topS, h_front, h_side, theta, delta = compute_heights_and_angles(front_bases, side_bases)
 
-    X_offset = abs(x2 - x4)               # |x2 - x4|
+    X_offset = abs(x2 - x4)  # |x2 - x4|
     Y_offset = - h_front * math.cos(theta)  # -h_front cosθ
 
     out: Dict[str, List[Point3D]] = {}
     for gid, seg in right_total.items():
         pts: List[Point3D] = []
-        for (y,z) in seg:
+        for (y, z) in seg:
             ys2, z2p = _norm_side_point(y, z, y7, z_topS)
             X = X_offset + z2p * math.cos(delta)
             Y = Y_offset + ys2
@@ -1033,6 +1079,7 @@ def reconstruct3d_right(right_total: CoordDict,
             pts.append((X, Y, Z))
         out[f"R_{gid}"] = pts
     return out
+
 
 # ====== Splicing (原 splicing.py) ======
 # splicing.py - 模型拼接功能模块 (已修正为基于端点的精确对齐)
@@ -1146,8 +1193,8 @@ def _align_and_transform_model(model_data: Dict[str, Model3DData],
 
 
 def splice_models(
-    all_models_data: AllModelsData,
-    auto_base_index: Optional[int] = None,
+        all_models_data: AllModelsData,
+        auto_base_index: Optional[int] = None,
 ) -> Tuple[Model3DData, Model3DData]:
     """
     执行模型拼接的主函数（使用修正后的端点对齐算法）。
@@ -1235,6 +1282,7 @@ def splice_models(
     print("=" * 50)
 
     return cumulative_f3d, cumulative_r3d
+
 
 # ====== Final Output (原 generate_final_output.py) ======
 # generate_final_output.py
@@ -1360,10 +1408,10 @@ class UniqueNodeIdentifier:
             return base_id_str  # 如果ID不是纯数字，直接返回
 
 
-
 # === Paste the following into core.py (replace the old generate_outputs and add helpers) ===
 from typing import Dict, List, Tuple
 import math
+
 
 # 类型别名已在文件开头定义
 
@@ -1396,8 +1444,8 @@ def _build_pinjie_from_front_horiz(final_coords_map: dict,
     m_to_nodes = {}
     for g in (ganjian or []):
         mid = str(g.get('member_id'))
-        n1  = str(g.get('node1_id'))
-        n2  = str(g.get('node2_id'))
+        n1 = str(g.get('node1_id'))
+        n2 = str(g.get('node2_id'))
         if mid and (n1 is not None) and (n2 is not None):
             m_to_nodes[mid] = (n1, n2)
 
@@ -1441,11 +1489,14 @@ def _build_pinjie_from_front_horiz(final_coords_map: dict,
     pinjie = [[str(node_id), coord] for node_id, coord in items]
     return pinjie
 
+
 def _last2(s: str) -> str:
     return s[-2:] if len(s) >= 2 else s
 
+
 def _base(s: str) -> str:
     return s[:-2] if len(s) >= 2 and s[-2:].isdigit() else s
+
 
 def _plus_suffix(s: str, delta: int) -> str:
     suf = _last2(s)
@@ -1454,18 +1505,21 @@ def _plus_suffix(s: str, delta: int) -> str:
     n = int(suf) + delta
     return f"{_base(s)}{n:02d}"
 
+
 def _sym_pt(pt: Point3D, sym_type: int) -> Point3D:
     x, y, z = pt
-    if sym_type == 1:   # 左右
+    if sym_type == 1:  # 左右
         return (-x, y, z)
-    if sym_type == 2:   # 前后
+    if sym_type == 2:  # 前后
         return (x, -y, z)
-    if sym_type == 3:   # 中心
+    if sym_type == 3:  # 中心
         return (-x, -y, z)
-    return pt           # 4: 自身（保持不动）
+    return pt  # 4: 自身（保持不动）
+
 
 def _dist3(a: Point3D, b: Point3D) -> float:
-    return math.sqrt((a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2)
+    return math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2)
+
 
 def _sort_lr(p1: Point3D, p2: Point3D) -> Tuple[Point3D, Point3D]:
     # 以 x 为主，y 为次，保证 (left, right)
@@ -1473,17 +1527,20 @@ def _sort_lr(p1: Point3D, p2: Point3D) -> Tuple[Point3D, Point3D]:
         return p1, p2
     return p2, p1
 
+
 def _top_bottom(p1: Point3D, p2: Point3D) -> Tuple[Point3D, Point3D]:
     # z 越小越靠上
     if p1[2] <= p2[2]:
         return p1, p2
     return p2, p1
 
+
 def _closest_id(pt: Point3D, known: Dict[str, Point3D], eps=1e-6) -> str:
     for k, v in known.items():
         if _dist3(pt, v) <= eps:
             return k
     return ""
+
 
 # ---------- main API (do not rename) ----------
 def generate_outputs(final_coords_map: Dict[str, List[Point3D]], all_models_data: Dict[str, dict]):
@@ -1520,7 +1577,7 @@ def generate_outputs(final_coords_map: Dict[str, List[Point3D]], all_models_data
             seg3d = final_coords_map.get(str(sid))
             if not seg3d:
                 continue
-            cx = 0.5*(seg3d[0][0] + seg3d[1][0])
+            cx = 0.5 * (seg3d[0][0] + seg3d[1][0])
             if (min_cx is None) or (cx < min_cx):
                 min_cx = cx
                 base_sid = str(sid)
@@ -1547,8 +1604,10 @@ def generate_outputs(final_coords_map: Dict[str, List[Point3D]], all_models_data
         }
 
         # jiedian: 11类（必须有真实 XYZ）
-        jiedian.append({"node_id": sid10, "node_type": 11, "x": topP[0], "y": topP[1], "z": topP[2], "symmetry_type": 4})
-        jiedian.append({"node_id": sid20, "node_type": 11, "x": botP[0], "y": botP[1], "z": botP[2], "symmetry_type": 4})
+        jiedian.append(
+            {"node_id": sid10, "node_type": 11, "x": topP[0], "y": topP[1], "z": topP[2], "symmetry_type": 4})
+        jiedian.append(
+            {"node_id": sid20, "node_type": 11, "x": botP[0], "y": botP[1], "z": botP[2], "symmetry_type": 4})
 
         # ganjian: 支撑（只输出基准那根，利用对称性4生成其余）
         ganjian.append({"member_id": base_sid, "node1_id": sid10, "node2_id": sid20, "symmetry_type": 4})
@@ -1570,7 +1629,8 @@ def generate_outputs(final_coords_map: Dict[str, List[Point3D]], all_models_data
                 # 需要登记 12 类：node = <hid>10，X=基准支撑10，Y=基准支撑20，Z=真实
                 nid = f"{hid}10"
                 left_node_id = nid
-                jiedian.append({"node_id": nid, "node_type": 12, "X": f"1{sid10}", "Y": f"1{sid20}", "Z": L[2], "symmetry_type": 4})
+                jiedian.append({"node_id": nid, "node_type": 12, "X": f"1{sid10}", "Y": f"1{sid20}", "Z": L[2],
+                                "symmetry_type": 4})
                 known_nodes[nid] = L
                 # 也建立该节点的对称生成，便于 X/右侧复用识别
                 known_nodes[_plus_suffix(nid, +1)] = _sym_pt(L, 1)
@@ -1591,17 +1651,35 @@ def generate_outputs(final_coords_map: Dict[str, List[Point3D]], all_models_data
             if not seg3d:
                 continue
             Lr, Rr = _sort_lr(*seg3d)
-            # 以“对应层”左端点：优先复用正面的同层左端点的 LR 对称（若存在），否则用自身 <rid>10
-            # 尝试在 known_nodes 中直接找同坐标
+
+            # 尝试在 known_nodes 中找同坐标
             nid_left_guess = _closest_id(Lr, known_nodes, eps=EPS)
+
             if nid_left_guess:
                 left_node_id_r = nid_left_guess
             else:
-                left_node_id_r = f"{rid}10"  # 兜底
+                # 【关键修复】：如果没找到复用节点，必须登记这个新节点到 jiedian
+                left_node_id_r = f"{rid}10"
+                # 登记为 12 类参考节点
+                jiedian.append({
+                    "node_id": left_node_id_r,
+                    "node_type": 12,
+                    "X": str(sid10),
+                    "Y": str(sid20),
+                    "Z": Lr[2],
+                    "symmetry_type": 4
+                })
+                # 更新已知节点，防止后续重复创建
+                known_nodes[left_node_id_r] = Lr
+                known_nodes[_plus_suffix(left_node_id_r, +1)] = _sym_pt(Lr, 1)
+                known_nodes[_plus_suffix(left_node_id_r, +2)] = _sym_pt(Lr, 2)
+                known_nodes[_plus_suffix(left_node_id_r, +3)] = _sym_pt(Lr, 3)
+
+            # 侧面杆件连接 node1 和它的对称点 (+2 是前后对称)
             ganjian.append({
                 "member_id": str(rid),
                 "node1_id": left_node_id_r,
-                "node2_id": _plus_suffix(left_node_id_r, +2),  # 右侧横向 node2 = node1 +2 -> xx13
+                "node2_id": _plus_suffix(left_node_id_r, +2),
                 "symmetry_type": 1
             })
 
@@ -1631,7 +1709,8 @@ def generate_outputs(final_coords_map: Dict[str, List[Point3D]], all_models_data
                 node1 = left_reuse
             else:
                 node1 = f"{xid}10"
-                jiedian.append({"node_id": node1, "node_type": 12, "X": f"1{sid10}", "Y": f"1{sid20}", "Z": Lx[2], "symmetry_type": 4})
+                jiedian.append({"node_id": node1, "node_type": 12, "X": f"1{sid10}", "Y": f"1{sid20}", "Z": Lx[2],
+                                "symmetry_type": 4})
                 known_nodes[node1] = Lx
                 known_nodes[_plus_suffix(node1, +1)] = _sym_pt(Lx, 1)
                 known_nodes[_plus_suffix(node1, +2)] = _sym_pt(Lx, 2)
@@ -1643,7 +1722,8 @@ def generate_outputs(final_coords_map: Dict[str, List[Point3D]], all_models_data
                 node2 = right_reuse
             else:
                 node2 = f"{xid}20"
-                jiedian.append({"node_id": node2, "node_type": 12, "X": f"1{_plus_suffix(sid10, +1)}", "Y": f"1{_plus_suffix(sid20, +1)}", "Z": Rx[2], "symmetry_type": 4})
+                jiedian.append({"node_id": node2, "node_type": 12, "X": f"1{_plus_suffix(sid10, +1)}",
+                                "Y": f"1{_plus_suffix(sid20, +1)}", "Z": Rx[2], "symmetry_type": 4})
                 known_nodes[node2] = Rx
                 known_nodes[_plus_suffix(node2, +1)] = _sym_pt(Rx, 1)
                 known_nodes[_plus_suffix(node2, +2)] = _sym_pt(Rx, 2)
@@ -1651,6 +1731,21 @@ def generate_outputs(final_coords_map: Dict[str, List[Point3D]], all_models_data
 
             ganjian.append({"member_id": str(xid), "node1_id": node1, "node2_id": node2, "symmetry_type": 4})
 
+        #     # 右面 "\"
+        #     for xid, seg2d in right_x.items():
+        #         if not _is_backslash_2d(seg2d):
+        #             continue
+        #         seg3d = final_coords_map.get(str(xid))
+        #         if not seg3d:
+        #             continue
+        #         Lx, Rx = _sort_lr(*seg3d)
+        #         # 右面 node1 = <xid>11（或复用 LR 对称点），node2 = <xid>13（或复用）
+        #         # 优先直接匹配坐标复用
+        #         n1_guess = _closest_id(Lx, known_nodes, eps=EPS)
+        #         n2_guess = _closest_id(Rx, known_nodes, eps=EPS)
+        #         node1 = n1_guess if n1_guess else f"{xid}11"
+        #         node2 = n2_guess if n2_guess else f"{xid}13"
+        #         ganjian.append({"member_id": str(xid), "node1_id": node1, "node2_id": node2, "symmetry_type": 4})
         # 右面 "\"
         for xid, seg2d in right_x.items():
             if not _is_backslash_2d(seg2d):
@@ -1659,26 +1754,67 @@ def generate_outputs(final_coords_map: Dict[str, List[Point3D]], all_models_data
             if not seg3d:
                 continue
             Lx, Rx = _sort_lr(*seg3d)
-            # 右面 node1 = <xid>11（或复用 LR 对称点），node2 = <xid>13（或复用）
-            # 优先直接匹配坐标复用
+
+            # --- node1（右面左端点，对应 11）---
             n1_guess = _closest_id(Lx, known_nodes, eps=EPS)
+            if n1_guess:
+                node1 = n1_guess
+            else:
+                node1 = f"{xid}11"
+                # 【关键修复】登记新节点
+                jiedian.append({
+                    "node_id": node1,
+                    "node_type": 12,
+                    "X": f"1{_plus_suffix(sid10, +1)}",
+                    "Y": f"1{sid20}",
+                    "Z": Lx[2],
+                    "symmetry_type": 4
+                })
+                known_nodes[node1] = Lx
+                known_nodes[_plus_suffix(node1, +1)] = _sym_pt(Lx, 1)
+                known_nodes[_plus_suffix(node1, +2)] = _sym_pt(Lx, 2)
+                known_nodes[_plus_suffix(node1, +3)] = _sym_pt(Lx, 3)
+
+            # --- node2（右面右端点，对应 13）---
             n2_guess = _closest_id(Rx, known_nodes, eps=EPS)
-            node1 = n1_guess if n1_guess else f"{xid}11"
-            node2 = n2_guess if n2_guess else f"{xid}13"
-            ganjian.append({"member_id": str(xid), "node1_id": node1, "node2_id": node2, "symmetry_type": 4})
+            if n2_guess:
+                node2 = n2_guess
+            else:
+                node2 = f"{xid}13"
+                # 【关键修复】登记新节点
+                jiedian.append({
+                    "node_id": node2,
+                    "node_type": 12,
+                    "X": f"1{_plus_suffix(sid10, +1)}",
+                    "Y": f"1{_plus_suffix(sid20, +1)}",
+                    "Z": Rx[2],
+                    "symmetry_type": 4
+                })
+                known_nodes[node2] = Rx
+                known_nodes[_plus_suffix(node2, +1)] = _sym_pt(Rx, 1)
+                known_nodes[_plus_suffix(node2, +2)] = _sym_pt(Rx, 2)
+                known_nodes[_plus_suffix(node2, +3)] = _sym_pt(Rx, 3)
+
+            ganjian.append({
+                "member_id": str(xid),
+                "node1_id": node1,
+                "node2_id": node2,
+                "symmetry_type": 4
+            })
 
         # ===== PINJIE：正面视图所有横向杆件端点（绝对坐标；沿用 ID 复用规则；Z↑,X↑）=====
         pinjie = _build_pinjie_from_front_horiz(final_coords_map, all_models_data, ganjian)
     return ganjian, jiedian, pinjie
 
+
 # I/O
 def drop_vertical_members(
-    members: CoordDict,
-    span_length: Optional[float],
-    dx_ratio: float = 0.01,   # 相对阈值：占顶横长度的 1%
-    dx_abs: float = 4.0,      # 绝对阈值：按你坐标量纲可调（如 2~6）
-    min_len: float = 5.0,     # 短线不过滤，避免数值抖动
-    return_excluded: bool = False,
+        members: CoordDict,
+        span_length: Optional[float],
+        dx_ratio: float = 0.01,  # 相对阈值：占顶横长度的 1%
+        dx_abs: float = 4.0,  # 绝对阈值：按你坐标量纲可调（如 2~6）
+        min_len: float = 5.0,  # 短线不过滤，避免数值抖动
+        return_excluded: bool = False,
 ):
     """
     仅按水平投影 Δx 判定“近竖直”，从 X 候选中剔除：
@@ -1701,7 +1837,7 @@ def drop_vertical_members(
         (x1, y1), (x2, y2) = seg
         dx = abs(float(x2) - float(x1))
         dy = abs(float(y2) - float(y1))
-        L  = math.hypot(dx, dy)
+        L = math.hypot(dx, dy)
         if L < float(min_len):
             kept[str(k)] = seg
             continue
@@ -1715,6 +1851,7 @@ def drop_vertical_members(
 
 # ====== New: Vertical stacking alias builder & post-processor ======
 from typing import Set
+
 
 def build_vertical_reuse_aliases(final_coords_map: Dict[str, List[Point3D]],
                                  all_models_data: Dict[str, dict],
@@ -1749,7 +1886,7 @@ def build_vertical_reuse_aliases(final_coords_map: Dict[str, List[Point3D]],
     for i in range(len(parts)):
         upper = parts[i]
         for j in range(len(parts)):
-            if i == j: 
+            if i == j:
                 continue
             lower = parts[j]
             if _dist3(upper["bot"], lower["top"]) <= float(eps):
@@ -1773,12 +1910,14 @@ def apply_id_aliases(ganjian: list, jiedian: list, pinjie: list, id_aliases: Dic
           * 12类：node_id 及其 X/Y 参考ID都做别名替换；同一 node_id 只保留一条
       - pinjie: node_id 做别名替换，去重（保留第一次）
     """
+
     def canon(value: str) -> str:
         """
         将任意节点/引用 ID 规整到最终基准 ID。
         支持带有前缀 '1' 的引用形式：会先解析前缀后面的真实 ID，
         完成别名折叠后再恢复原此前缀。
         """
+
         def _lift(one: str) -> str:
             seen: Set[str] = set()
             cur = one
@@ -1829,7 +1968,7 @@ def apply_id_aliases(ganjian: list, jiedian: list, pinjie: list, id_aliases: Dic
             if "X" in r: r["X"] = canon(str(r["X"]))
             if "Y" in r: r["Y"] = canon(str(r["Y"]))
             key = ("12", nid)
-            if key in seen_j: 
+            if key in seen_j:
                 continue
             seen_j.add(key)
             new_j.append(r)

@@ -113,7 +113,7 @@ def format_xyz_coordinates(data):
                 item[key] = round(item[key], 3)
     return data
 
-def tran2dto3d(danjia_dir,tashen_dir,project_path,savepath_ui):
+def tran2dto3d(danjia_dir,tashen_dir,project_path,savepath_ui,drawing_type):
 
     # 添加杆件的规格，另外记得在上面杆件代码中添加
     # from v7 import ImageProcessor
@@ -125,8 +125,6 @@ def tran2dto3d(danjia_dir,tashen_dir,project_path,savepath_ui):
     #         specs.update(numandtableDetector.extract_table_specs(file_path))
 
 
-    # drawing_type ="1E2-SDJ"
-    drawing_type = "J1"
     ganjian_tashen, jiedian_tashen, pinjie_tashen = tower_body_reconstruction.build_tower_body(tashen_dir)
     jiedian_danjia,ganjian_danjia= xintrans.work(danjia_dir, pinjie_tashen,drawing_type)
     jiedian=jiedian_danjia+jiedian_tashen
