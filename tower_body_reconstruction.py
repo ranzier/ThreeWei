@@ -66,6 +66,47 @@ def _promote_xyz_uppercase(obj):
         for item in obj:
             _promote_xyz_uppercase(item)
 
+def resolve_node_references(nodes):
+    """
+    将类似 170810 这种编码坐标解析为真实坐标
+    """
+
+    node_map = {node["node_id"]: node for node in nodes}
+
+    def resolve_value(val):
+
+        if not isinstance(val, int):
+            return val
+
+        # 小于10000认为是真实坐标
+        if val < 10000:
+            return val
+
+        base_id = val // 10
+        sym = val % 10
+
+        if base_id not in node_map:
+            return val
+
+        base_node = node_map[base_id]
+
+        if sym == 0:
+            return base_node["X"]
+        elif sym == 1:
+            return base_node["Y"]
+        elif sym == 2:
+            return base_node["Z"]
+
+        return val
+
+    for node in nodes:
+
+        node["X"] = resolve_value(node["X"])
+        node["Y"] = resolve_value(node["Y"])
+        node["Z"] = resolve_value(node["Z"])
+
+    return nodes
+
 
 # =========================
 # 自动判别 (正侧面 vs 单正面)
@@ -179,6 +220,8 @@ def _build_family_id_map(B0_id: str, A0_id: str) -> Dict[str, str]:
     return id_map
 
 
+
+
 # =========================
 # A 线：双视图 (塔身主体)
 # =========================
@@ -225,7 +268,6 @@ def _build_axis_reference_map(jiedian_B: List[dict]) -> Dict[str, Dict[str, str]
         if axis_info:
             axis_map[node_id] = axis_info
     return axis_map
-
 
 
 def run_single_view_B(single_dir: str, file_glob: str = "*.txt"):
@@ -291,11 +333,11 @@ def apply_numeric_transform_B(jiedian_B: List[dict], s: float, t: Point3D, axis_
         nt = int(nd.get("node_type", 0))
         if nt == 11:
             if all(k in nd for k in ("X", "Y", "Z")):
-                nd["X"] = round(float(nd["X"]) * s + t[0], 6)
+                nd["X"] = round(abs(float(nd["X"])) * s + t[0], 6)
                 nd["Y"] = round(float(nd["Y"]) * s + t[1], 6)
                 nd["Z"] = round(float(nd["Z"]) * s + t[2], 6)
             elif all(k in nd for k in ("x", "y", "z")):
-                nd["x"] = round(float(nd["x"]) * s + t[0], 6)
+                nd["x"] = round(abs(float(nd["x"])) * s + t[0], 6)
                 nd["y"] = round(float(nd["y"]) * s + t[1], 6)
                 nd["z"] = round(float(nd["z"]) * s + t[2], 6)
         elif nt == 12:
@@ -352,7 +394,7 @@ def pick_bottom_support_point_for_bridge_A(jiedian_A: List[dict]) -> Tuple[str, 
         raise RuntimeError("A线：未找到可用于桥接的节点")
     best_id, best_xyz = max(
         candidates.items(),
-        key=lambda item: (item[1][2], -abs(item[1][0]), -abs(item[1][1]), item[0]),
+        key=lambda item: (item[1][2], math.hypot(item[1][0], item[1][1]), item[0]),
     )
     return best_id, best_xyz
 
@@ -373,7 +415,7 @@ def pick_top_member_point_for_bridge_B(jiedian_B: List[dict]) -> Tuple[str, Poin
         raise RuntimeError("B线：未找到可用于桥接的节点")
     best_id, best_xyz = min(
         candidates.items(),
-        key=lambda item: (item[1][2], abs(item[1][0]), abs(item[1][1]), item[0]),
+        key=lambda item: (item[1][2], -math.hypot(item[1][0], item[1][1]), item[0]),
     )
     return best_id, best_xyz
 
@@ -625,91 +667,75 @@ def run(dual_dir: str, single_dir: str):
     # ======================================================
 
     def snap_lowest_nodes_to_base(
-        ganjian: List[dict],
-        jiedian: List[dict],
-        z_eps: float = 1e-6,
-        xy_tol: float = 50.0,   # ⚠️ 可根据图纸尺度调整，建议 30~80
-    ):
-        # 1️⃣ 收集所有 node_id -> (x,y,z)
-        node_xyz = {}
-        for nd in jiedian:
-            p = _get_xyz(nd)
-            if p is not None:
-                node_xyz[str(nd["node_id"])] = p
+            ganjian: List[dict],
+            jiedian: List[dict],
+            z_eps: float = 1e-6,
+            xy_tol: float = 20.0,   # 缩小容差到20mm，避免过度吸附
+        ):
+            # 1️⃣ 收集所有 node_id -> (x,y,z)
+            node_xyz = {}
+            for nd in jiedian:
+                p = _get_xyz(nd)
+                if p is not None:
+                    node_xyz[str(nd["node_id"])] = p
 
-        if not node_xyz:
-            return
+            if not node_xyz:
+                return
 
-        # 2️⃣ 找最低 Z
-        z_min = min(p[2] for p in node_xyz.values())
+            # 2️⃣ 找最低 Z
+            z_min = min(p[2] for p in node_xyz.values())
 
-        # 3️⃣ 基部节点（node_type == 11 且 Z≈z_min）
-        base_nodes = {
-            nid: p
-            for nid, p in node_xyz.items()
-            if abs(p[2] - z_min) < z_eps
-            and any(
-                str(nd.get("node_id")) == nid and int(nd.get("node_type", 0)) == 11
-                for nd in jiedian
-            )
-        }
+            # 3️⃣ 基部节点（node_type == 11 且 Z≈z_min）
+            base_nodes = {
+                nid: p
+                for nid, p in node_xyz.items()
+                if abs(p[2] - z_min) < z_eps
+                and any(
+                    str(nd.get("node_id")) == nid and int(nd.get("node_type", 0)) == 11
+                    for nd in jiedian
+                )
+            }
 
-        if len(base_nodes) < 2:
-            return  # 没有可靠基部，直接跳过
+            if len(base_nodes) < 2:
+                return
 
-        # 4️⃣ 找“可疑节点”：Z≈z_min，但不是基部 11 节点
-        snap_map = {}  # bad_node_id -> base_node_id
-
-        for nid, (x, y, z) in node_xyz.items():
+            # 👉 修复：将 target_nodes 的提取移到外层，且避免使用 nid 作为变量名
             target_nodes = set()
-
             for m in ganjian:
                 if str(m.get("member_id")) in {"1905", "1906"}:
                     target_nodes.add(str(m.get("node1_id")))
                     target_nodes.add(str(m.get("node2_id")))
 
-            for nid in target_nodes:
-                x, y, z = node_xyz[nid]
-                best = None
-                for bid, (bx, by, bz) in base_nodes.items():
-                    dxy = math.hypot(x - bx, y - by)
-                    if dxy < xy_tol and (best is None or dxy < best[0]):
-                        best = (dxy, bid)
-                if best:
-                    snap_map[nid] = best[1]
+            snap_map = {}
+            for current_nid, (x, y, z) in node_xyz.items():
+                if current_nid in base_nodes:
+                    continue
 
-            if nid in base_nodes:
-                continue
+                # 只有指定的特殊杆件端点，或者非常靠近基部的点才做吸附
+                is_target = current_nid in target_nodes
+                is_near_base_z = abs(z - z_min) < 10.0  # 改为10mm，更严格的条件
 
-            # 找最近的基部节点（XY 平面）
-            best = None
-            for bid, (bx, by, bz) in base_nodes.items():
-                dxy = math.hypot(x - bx, y - by)
-                if dxy <= xy_tol and (best is None or dxy < best[0]):
-                    best = (dxy, bid)
+                if is_target and is_near_base_z:
+                    best = None
+                    for bid, (bx, by, bz) in base_nodes.items():
+                        dxy = math.hypot(x - bx, y - by)
+                        if dxy <= xy_tol and (best is None or dxy < best[0]):
+                            best = (dxy, bid)
 
-            if best is not None:
-                snap_map[nid] = best[1]
+                    if best is not None:
+                        snap_map[current_nid] = best[1]
 
-        if not snap_map:
-            return
+            if not snap_map:
+                return
 
-        print(f"[snap-base] 基部吸附节点映射: {snap_map}")
+            # 重写杆件端点并删除冗余节点
+            for m in ganjian:
+                n1 = str(m.get("node1_id"))
+                n2 = str(m.get("node2_id"))
+                if n1 in snap_map: m["node1_id"] = snap_map[n1]
+                if n2 in snap_map: m["node2_id"] = snap_map[n2]
 
-        # 5️⃣ 重写杆件端点
-        for m in ganjian:
-            n1 = str(m.get("node1_id"))
-            n2 = str(m.get("node2_id"))
-            if n1 in snap_map:
-                m["node1_id"] = snap_map[n1]
-            if n2 in snap_map:
-                m["node2_id"] = snap_map[n2]
-
-        # 6️⃣ 删除被吸附的冗余节点
-        jiedian[:] = [
-            nd for nd in jiedian
-            if str(nd.get("node_id")) not in snap_map
-        ]
+            jiedian[:] = [nd for nd in jiedian if str(nd.get("node_id")) not in snap_map]
 
     # 👉 执行 snapping（只对 A 线）
     snap_lowest_nodes_to_base(ganjian_A, jiedian_A)
@@ -724,15 +750,16 @@ def run(dual_dir: str, single_dir: str):
 
     # 假设：B 线底部宽度应匹配 A 线顶部宽度
     # 这里用 X 坐标估算缩放比例
-    denom = B_point[0] * 2.0
+    denom = abs(B_point[0]) * 2.0
     if abs(denom) <= 1e-9:
         raise RuntimeError("B线：桥接参考点的 X*2 为 0，无法计算缩放因子")
-    scale = (A_point[0] * 2.0) / denom
+    scale = (abs(A_point[0]) * 2.0) / denom
 
     # 计算平移向量
-    B_point_scaled = (B_point[0] * scale, B_point[1] * scale, B_point[2] * scale)
+    # 关键修复：使用绝对值来缩放，保持方向一致
+    B_point_scaled = (abs(B_point[0]) * scale, B_point[1] * scale, B_point[2] * scale)
     translation = (
-        A_point[0] - B_point_scaled[0],
+        abs(A_point[0]) - abs(B_point_scaled[0]),
         A_point[1] - B_point_scaled[1],
         A_point[2] - B_point_scaled[2],
     )

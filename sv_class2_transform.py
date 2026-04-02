@@ -416,7 +416,7 @@ def convert_data0202(line_z_dict, lines02, line_group, lines01, horizontal_lines
             "node_id": node101_id,
             "node_type": 12,
             "symmetry_type": 2,
-            "X": 0,
+            "X": 0.0,
             "Y": f"{matched_horizontal_id}10",
             "Z": f"{matched_horizontal_id}11",
         })
@@ -427,7 +427,7 @@ def convert_data0202(line_z_dict, lines02, line_group, lines01, horizontal_lines
             "node_type": 12,
             "symmetry_type": 1,
             "X": f"{matched_horizontal_id}10",
-            "Y": 0,
+            "Y": -0.478906,
             "Z": f"{matched_horizontal_id}12",
         })
 

@@ -242,54 +242,97 @@ def _pairs_to_dict(pairs: List[_XPair]) -> Dict[str, List[Coord]]:
         out[p.idB] = [p.topR, p.botL]
     return out
 
+# def _fix_xmembers(front_x: CoordDict, right_x: CoordDict,
+#                   front_support: CoordDict, right_support: CoordDict,
+#                   front_horizontal: CoordDict, right_horizontal: CoordDict,
+#                   front_x_mid: Optional[float], right_x_mid: Optional[float],
+#                   span_len_f: Optional[float], span_len_r: Optional[float],
+#                   params: Optional[dict]=None):
+#     params = params or {}
+#     overlap_thr = float(params.get("overlap_thr", 0.65))
+#     band_eps_rel = float(params.get("band_eps_rel", 0.10))
+#     band_eps_abs = float(params.get("band_eps_abs", 60.0))
+
+#     fpairs = _pair_in_view(front_x, front_x_mid, overlap_thr=overlap_thr)
+#     rpairs = _pair_in_view(right_x, right_x_mid, overlap_thr=overlap_thr)
+
+#     def _span_len(sup: CoordDict)->float:
+#         xs=[(seg[0][0]+seg[1][0])/2.0 for seg in sup.values()]
+#         return (max(xs)-min(xs)) if xs else 100.0
+#     spanF=_span_len(front_support); spanR=_span_len(right_support)
+#     HmedF = statistics.median([abs(p.y_bot-p.y_top) for p in fpairs]) if fpairs else 100.0
+#     HmedR = statistics.median([abs(p.y_bot-p.y_top) for p in rpairs]) if rpairs else 100.0
+#     tau_y_f = max(20.0, 0.06*HmedF); tau_x_f = max(25.0, 0.06*spanF)
+#     tau_y_r = max(20.0, 0.06*HmedR); tau_x_r = max(25.0, 0.06*spanR)
+
+#     f_models = _models_from_supports(front_support)
+#     r_models = _models_from_supports(right_support)
+#     _hard_snap_for_view(fpairs, front_horizontal, f_models)
+#     _hard_snap_for_view(rpairs, right_horizontal, r_models)
+
+#     matches = _match_pairs(fpairs, rpairs, band_eps_rel, band_eps_abs)
+#     for (i_f, i_r) in matches:
+#         pts=[];
+#         if i_f is not None: pts += [fpairs[i_f].topL, fpairs[i_f].topR]
+#         if i_r is not None: pts += [rpairs[i_r].topL, rpairs[i_r].topR]
+#         if pts:
+#             Ybar = statistics.mean([p[1] for p in pts])
+#             Lf,Rf = _extreme_x_at(f_models, Ybar); Lr,Rr = _extreme_x_at(r_models, Ybar)
+#             if i_f is not None: fpairs[i_f].topL, fpairs[i_f].topR = (Lf,Ybar),(Rf,Ybar)
+#             if i_r is not None: rpairs[i_r].topL, rpairs[i_r].topR = (Lr,Ybar),(Rr,Ybar)
+#         pts=[]
+#         if i_f is not None: pts += [fpairs[i_f].botL, fpairs[i_f].botR]
+#         if i_r is not None: pts += [rpairs[i_r].botL, rpairs[i_r].botR]
+#         if pts:
+#             Ybar = statistics.mean([p[1] for p in pts])
+#             Lf,Rf = _extreme_x_at(f_models, Ybar); Lr,Rr = _extreme_x_at(r_models, Ybar)
+#             if i_f is not None: fpairs[i_f].botL, fpairs[i_f].botR = (Lf,Ybar),(Rf,Ybar)
+#             if i_r is not None: rpairs[i_r].botL, rpairs[i_r].botR = (Lr,Ybar),(Rr,Ybar)
+
+#     return _pairs_to_dict(fpairs), _pairs_to_dict(rpairs), fpairs, rpairs
 def _fix_xmembers(front_x: CoordDict, right_x: CoordDict,
                   front_support: CoordDict, right_support: CoordDict,
                   front_horizontal: CoordDict, right_horizontal: CoordDict,
                   front_x_mid: Optional[float], right_x_mid: Optional[float],
                   span_len_f: Optional[float], span_len_r: Optional[float],
                   params: Optional[dict]=None):
+    """
+    【极简重构版】：
+    废除所有 2D 阶段的强制对齐（_hard_snap）、相邻捏合（_snap_adjacent）和跨视图高度配对（_match_pairs）。
+    因为这些操作会严重扭曲 CAD 原始坐标，导致连续 X 型或不规则 K/V 型杆件在 3D 重建前就损坏或丢失。
+    我们只负责：
+    1. 把 \ 和 / 组合成 X 型对（fpairs / rpairs），并适度放宽重叠要求。
+    2. 原封不动地输出它们的 2D 坐标。
+    3. 把没有配对成功的单根斜材也保留下来，防止漏杆件。
+    真正的对齐和缝合，将由 generate_outputs 在 3D 空间中通过 _closest_id 完美完成。
+    """
     params = params or {}
-    overlap_thr = float(params.get("overlap_thr", 0.65))
-    band_eps_rel = float(params.get("band_eps_rel", 0.10))
-    band_eps_abs = float(params.get("band_eps_abs", 60.0))
+    overlap_thr = float(params.get("overlap_thr", 0.40))  # 放宽重叠要求到 40%，拯救画得不标准的 X
 
+    # 1. 尝试将 \ 和 / 组合成 X 型对
     fpairs = _pair_in_view(front_x, front_x_mid, overlap_thr=overlap_thr)
     rpairs = _pair_in_view(right_x, right_x_mid, overlap_thr=overlap_thr)
 
-    def _span_len(sup: CoordDict)->float:
-        xs=[(seg[0][0]+seg[1][0])/2.0 for seg in sup.values()]
-        return (max(xs)-min(xs)) if xs else 100.0
-    spanF=_span_len(front_support); spanR=_span_len(right_support)
-    HmedF = statistics.median([abs(p.y_bot-p.y_top) for p in fpairs]) if fpairs else 100.0
-    HmedR = statistics.median([abs(p.y_bot-p.y_top) for p in rpairs]) if rpairs else 100.0
-    tau_y_f = max(20.0, 0.06*HmedF); tau_x_f = max(25.0, 0.06*spanF)
-    tau_y_r = max(20.0, 0.06*HmedR); tau_x_r = max(25.0, 0.06*spanR)
+    # 2. 将配对成功的 X 型杆件提取为字典
+    out_f = _pairs_to_dict(fpairs)
+    out_r = _pairs_to_dict(rpairs)
 
-    f_models = _models_from_supports(front_support)
-    r_models = _models_from_supports(right_support)
-    _hard_snap_for_view(fpairs, front_horizontal, f_models)
-    _hard_snap_for_view(rpairs, right_horizontal, r_models)
+    # 3. 【关键防漏机制】：
+    # 无论是半宽的 K/V 型，还是因为重叠率不够没配上对的 X 型，
+    # 只要存在于 front_x / right_x 中，且没有进入 out_f / out_r，统统原样保留！
+    for k, seg in (front_x or {}).items():
+        sk = str(k)
+        if sk not in out_f:
+            out_f[sk] = [(float(seg[0][0]), float(seg[0][1])), (float(seg[1][0]), float(seg[1][1]))]
+            
+    for k, seg in (right_x or {}).items():
+        sk = str(k)
+        if sk not in out_r:
+            out_r[sk] = [(float(seg[0][0]), float(seg[0][1])), (float(seg[1][0]), float(seg[1][1]))]
 
-    matches = _match_pairs(fpairs, rpairs, band_eps_rel, band_eps_abs)
-    for (i_f, i_r) in matches:
-        pts=[];
-        if i_f is not None: pts += [fpairs[i_f].topL, fpairs[i_f].topR]
-        if i_r is not None: pts += [rpairs[i_r].topL, rpairs[i_r].topR]
-        if pts:
-            Ybar = statistics.mean([p[1] for p in pts])
-            Lf,Rf = _extreme_x_at(f_models, Ybar); Lr,Rr = _extreme_x_at(r_models, Ybar)
-            if i_f is not None: fpairs[i_f].topL, fpairs[i_f].topR = (Lf,Ybar),(Rf,Ybar)
-            if i_r is not None: rpairs[i_r].topL, rpairs[i_r].topR = (Lr,Ybar),(Rr,Ybar)
-        pts=[]
-        if i_f is not None: pts += [fpairs[i_f].botL, fpairs[i_f].botR]
-        if i_r is not None: pts += [rpairs[i_r].botL, rpairs[i_r].botR]
-        if pts:
-            Ybar = statistics.mean([p[1] for p in pts])
-            Lf,Rf = _extreme_x_at(f_models, Ybar); Lr,Rr = _extreme_x_at(r_models, Ybar)
-            if i_f is not None: fpairs[i_f].botL, fpairs[i_f].botR = (Lf,Ybar),(Rf,Ybar)
-            if i_r is not None: rpairs[i_r].botL, rpairs[i_r].botR = (Lr,Ybar),(Rr,Ybar)
+    return out_f, out_r, fpairs, rpairs
 
-    return _pairs_to_dict(fpairs), _pairs_to_dict(rpairs), fpairs, rpairs
+
 
 # ======================================================================
 # ========================= 主要功能函数 ===============================
@@ -337,7 +380,6 @@ def main(data_dir: str):
             H_TOL = 1.0
             front_support = find_supports(front_raw)
             right_support = find_supports(right_raw)
-
 
             front_horizontal = find_horizontals(
                 {k: v for k, v in front_raw.items() if k not in front_support},
@@ -480,9 +522,9 @@ def main(data_dir: str):
             right_x_final2d: CoordDict = {}
             kept: Dict[str, CoordDict] = {}
             pending3d_2dpack: Dict[str, Dict[str, CoordDict]] = {}
-
             if front_x_type or right_x_type:
                 try:
+                    # 1. 调用极简版 X 型处理（只分组、防漏，不扭曲坐标）
                     f_fixed, r_fixed, fpairs, rpairs = _fix_xmembers(
                         front_x_type, right_x_type,
                         front_support, right_support,
@@ -490,32 +532,59 @@ def main(data_dir: str):
                         front_x_mid, right_x_mid,
                         span_len_f, span_len_r,
                         params={
-                            "overlap_thr": 0.65,
-                            "band_eps_rel": 0.15,
-                            "band_eps_abs": 30.0,
+                            "overlap_thr": 0.40, # 放宽重叠率，拯救所有的 X/K/V
                         }
                     )
-
-                    f_models = _models_from_supports(front_support)
-                    r_models = _models_from_supports(right_support)
-                    HmedF = statistics.median([abs(p.y_bot-p.y_top) for p in fpairs]) if fpairs else 100.0
-                    HmedR = statistics.median([abs(p.y_bot-p.y_top) for p in rpairs]) if rpairs else 100.0
-                    thr_y_f = max(50.0, 0.06*HmedF)
-                    thr_y_r = max(50.0, 0.06*HmedR)
-                    fpairs = _snap_adjacent_xpairs(fpairs, f_models, thr_y=thr_y_f, use_projection=True)
-                    rpairs = _snap_adjacent_xpairs(rpairs, r_models, thr_y=thr_y_r, use_projection=True)
-                    f_fixed = _pairs_to_dict(fpairs)
-                    r_fixed = _pairs_to_dict(rpairs)
+                    
+                    # ⚠️ 删除了所有 _snap_adjacent_xpairs 和 median 计算的冗余代码！
+                    # 原始坐标直接进入 3D 重建池！
+                    
                 except Exception as e:
                     print(f"  - 在对X型杆件复位时遇到异常：{e}")
                     f_fixed, r_fixed = {}, {}
 
+                # ... 保持后面的字典更新逻辑不变 ...
                 front_sup_final2d = dict(front_support)
                 right_sup_final2d = dict(right_support)
                 front_horiz_final2d = dict(front_horizontal)
                 right_horiz_final2d = dict(right_horizontal)
                 front_x_final2d = dict(f_fixed)
                 right_x_final2d = dict(r_fixed)
+            # if front_x_type or right_x_type:
+            #     try:
+            #         f_fixed, r_fixed, fpairs, rpairs = _fix_xmembers(
+            #             front_x_type, right_x_type,
+            #             front_support, right_support,
+            #             front_horizontal, right_horizontal,
+            #             front_x_mid, right_x_mid,
+            #             span_len_f, span_len_r,
+            #             params={
+            #                 "overlap_thr": 0.65,
+            #                 "band_eps_rel": 0.15,
+            #                 "band_eps_abs": 30.0,
+            #             }
+            #         )
+
+            #         f_models = _models_from_supports(front_support)
+            #         r_models = _models_from_supports(right_support)
+            #         HmedF = statistics.median([abs(p.y_bot-p.y_top) for p in fpairs]) if fpairs else 100.0
+            #         HmedR = statistics.median([abs(p.y_bot-p.y_top) for p in rpairs]) if rpairs else 100.0
+            #         thr_y_f = max(50.0, 0.06*HmedF)
+            #         thr_y_r = max(50.0, 0.06*HmedR)
+            #         fpairs = _snap_adjacent_xpairs(fpairs, f_models, thr_y=thr_y_f, use_projection=True)
+            #         rpairs = _snap_adjacent_xpairs(rpairs, r_models, thr_y=thr_y_r, use_projection=True)
+            #         f_fixed = _pairs_to_dict(fpairs)
+            #         r_fixed = _pairs_to_dict(rpairs)
+            #     except Exception as e:
+            #         print(f"  - 在对X型杆件复位时遇到异常：{e}")
+            #         f_fixed, r_fixed = {}, {}
+
+            #     front_sup_final2d = dict(front_support)
+            #     right_sup_final2d = dict(right_support)
+            #     front_horiz_final2d = dict(front_horizontal)
+            #     right_horiz_final2d = dict(right_horizontal)
+            #     front_x_final2d = dict(f_fixed)
+            #     right_x_final2d = dict(r_fixed)
 
                 def _remaining(raw_dict, a, b, c):
                     keys = set(raw_dict.keys()) - set(a.keys()) - set(b.keys()) - set(c.keys())
@@ -560,8 +629,13 @@ def main(data_dir: str):
                     kept = {}
                     pending3d_2dpack = {}
 
-            class2_front = dict(f_fixed)
-            class2_right = dict(r_fixed)
+            # class2_front = dict(f_fixed)
+            # class2_right = dict(r_fixed)
+                        # === 核心修复：拯救被丢弃的 K型/V型 辅助斜材 ===
+            # 将 f_fixed (标准的交叉X型) 与 front_remaining (未交叉/半宽的辅材) 合并
+            # 保证图纸上画了的所有斜材，一根不少地进入 3D 重建池
+            class2_front = {**f_fixed, **front_remaining}
+            class2_right = {**r_fixed, **right_remaining}
 
             front_total = {**front_support, **front_horizontal, **class2_front}
             right_total = {**right_support, **right_horizontal, **class2_right}
@@ -571,7 +645,13 @@ def main(data_dir: str):
             if fbases is None or sbases is None:
                 print("  - 错误：无法提取基座点，跳过。")
                 continue
-
+                        # ===== 调试输出 =====
+            print("front bases:", fbases)
+            print("side bases:", sbases)
+# ===================
+            print("front_total keys:", list(front_total.keys())[:10])
+            print("right_total keys:", list(right_total.keys())[:10])
+            
             f3d = reconstruct3d_front(front_total, front_support, front_horizontal, sbases)
             r3d = reconstruct3d_right(right_total, right_support, right_horizontal, fbases)
 

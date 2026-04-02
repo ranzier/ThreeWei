@@ -87,6 +87,7 @@ def single_view_trans01(lines_dict, h, a, b):
             (-half_b, -half_b, z_top),
         ]
     }
+
     return res_line
 
 

@@ -359,7 +359,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
 
 
 
-    yuzhi = 50#是否在直线上距离阈值
+    yuzhi = 100#是否在直线上距离阈值
     data = transform_data(data1)
 
     # 将16个端点按照x轴的正负进行分组，【【【担架1的上端点】，【担架1的下端点】】，【【担架2的上端点】，【担架2的下端点】】，【【担架3的上端点】，【担架3的下端点】】，【】，【】...】
@@ -977,14 +977,14 @@ def trans(file_path, drawing_id, data1, drawing_type):
                 "point_2d": item["point_2d"]
             }
             node_103_ids.append(node_info)
-            duichenzuo = int(pj[drawing_id - 1][0][0]) + 2
+            duichenzuo = int(pj[drawing_id - 1][1][0])
             jiedian.append({
                 "node_id": node_id,
                 "node_type": 12,
                 "symmetry_type": 2,
                 "X": item["x_3d"],
                 "Y": f"1{duichenzuo}",
-                "Z": f"1{jiandian_id + 22}"
+                "Z": f"1{jiandian_id + 20}"
             })
 
         new_node_cnt = 0  # 只统计“真正新建的节点”
