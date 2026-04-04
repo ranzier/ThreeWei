@@ -712,53 +712,94 @@ def main(data_dir: str):
     elif len(all_models_data) == 1:
         model_data = list(all_models_data.values())[0]
         spliced_f3d, spliced_r3d = model_data['f3d'], model_data['r3d']
-
-    final_coords_map = {**{k.replace("F_", ""): v for k, v in spliced_f3d.items()},
-                    **{k.replace("R_", ""): v for k, v in spliced_r3d.items()}}
+    
+    # 1. 修复字典覆盖，保留 F_ 和 R_ 前缀
+    final_coords_map = {**spliced_f3d, **spliced_r3d}
 
     if final_coords_map:
         print("\n" + "=" * 50 + "\n双视图模型全局缩放步骤\n" + "=" * 50)
         manual_scale_needed = True
         if AUTO_SCALE_ENABLED:
-            auto_id = AUTO_SCALE_MEMBER_ID
+            # 2. 自动定标查找时兼容前缀
+            auto_id = f"F_{AUTO_SCALE_MEMBER_ID}" if f"F_{AUTO_SCALE_MEMBER_ID}" in final_coords_map else f"R_{AUTO_SCALE_MEMBER_ID}"
             if auto_id in final_coords_map:
                 try:
                     final_coords_map = scale_by_member(
-                        final_coords_map,
-                        auto_id,
-                        AUTO_SCALE_MEMBER_LENGTH,
+                        final_coords_map, auto_id, AUTO_SCALE_MEMBER_LENGTH,
                     )
-                    print(
-                        f"  - 自动定标：杆件 {auto_id} 长度 {AUTO_SCALE_MEMBER_LENGTH}m"
-                    )
+                    print(f"  - 自动定标：杆件 {auto_id} 长度 {AUTO_SCALE_MEMBER_LENGTH}m")
                     manual_scale_needed = False
                 except Exception as exc:
                     print(f"  - [警告] 自动定标失败：{exc}")
             else:
-                print(
-                    f"  - [警告] 自动定标失败：未找到杆件 {auto_id}"
-                )
+                print(f"  - [警告] 自动定标失败：未找到杆件 {AUTO_SCALE_MEMBER_ID}")
+                
         if manual_scale_needed:
             while True:
                 try:
-                    target_id = input(
-                        "请输入用于定标的双视图杆件ID (直接回车可跳过): "
-                    ).strip()
+                    target_id = input("请输入用于定标的双视图杆件ID (直接回车可跳过): ").strip()
                     if not target_id:
                         print("  - 已跳过手动缩放。")
                         break
-                    if target_id not in final_coords_map:
+                    
+                    # 3. 手动输入查找兼容前缀
+                    search_id = f"F_{target_id}" if f"F_{target_id}" in final_coords_map else f"R_{target_id}"
+                    
+                    if search_id not in final_coords_map:
                         print(f"  - 错误：杆件ID '{target_id}' 不存在。")
                         continue
-                    real_length = float(
-                        input(f"请输入杆件 '{target_id}' 的真实长度 (单位: 米): ")
-                    )
+                    real_length = float(input(f"请输入杆件 '{target_id}' 的真实长度 (单位: 米): "))
                     final_coords_map = scale_by_member(
-                        final_coords_map,
-                        target_id,
-                        real_length,
+                        final_coords_map, search_id, real_length,
                     )
                     print("  - 定标完成。")
+                    break
+    # final_coords_map = {**{k.replace("F_", ""): v for k, v in spliced_f3d.items()},
+    #                 **{k.replace("R_", ""): v for k, v in spliced_r3d.items()}}
+
+    # if final_coords_map:
+    #     print("\n" + "=" * 50 + "\n双视图模型全局缩放步骤\n" + "=" * 50)
+    #     manual_scale_needed = True
+    #     if AUTO_SCALE_ENABLED:
+    #         auto_id = AUTO_SCALE_MEMBER_ID
+    #         if auto_id in final_coords_map:
+    #             try:
+    #                 final_coords_map = scale_by_member(
+    #                     final_coords_map,
+    #                     auto_id,
+    #                     AUTO_SCALE_MEMBER_LENGTH,
+    #                 )
+    #                 print(
+    #                     f"  - 自动定标：杆件 {auto_id} 长度 {AUTO_SCALE_MEMBER_LENGTH}m"
+    #                 )
+    #                 manual_scale_needed = False
+    #             except Exception as exc:
+    #                 print(f"  - [警告] 自动定标失败：{exc}")
+    #         else:
+    #             print(
+    #                 f"  - [警告] 自动定标失败：未找到杆件 {auto_id}"
+    #             )
+    #     if manual_scale_needed:
+    #         while True:
+    #             try:
+    #                 target_id = input(
+    #                     "请输入用于定标的双视图杆件ID (直接回车可跳过): "
+    #                 ).strip()
+    #                 if not target_id:
+    #                     print("  - 已跳过手动缩放。")
+    #                     break
+    #                 if target_id not in final_coords_map:
+    #                     print(f"  - 错误：杆件ID '{target_id}' 不存在。")
+    #                     continue
+    #                 real_length = float(
+    #                     input(f"请输入杆件 '{target_id}' 的真实长度 (单位: 米): ")
+    #                 )
+    #                 final_coords_map = scale_by_member(
+    #                     final_coords_map,
+    #                     target_id,
+    #                     real_length,
+    #                 )
+    #                 print("  - 定标完成。")
                     break
                 except ValueError:
                     print("  - 错误：请输入有效的数字长度。")

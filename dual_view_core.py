@@ -1642,10 +1642,15 @@ def _build_pinjie_from_front_horiz(final_coords_map: dict,
         if mid and (n1 is not None) and (n2 is not None):
             m_to_nodes[mid] = (n1, n2)
 
-    # 3) 将 final_coords_map 中与 front_h_ids 匹配的（考虑拼接产生的后缀 _1/_2…）都加入
-    #    匹配方式：以 “去掉后缀的基 ID = k.split('_')[0]” 与 front_h_ids 比较
+    # # 3) 将 final_coords_map 中与 front_h_ids 匹配的（考虑拼接产生的后缀 _1/_2…）都加入
+    # #    匹配方式：以 “去掉后缀的基 ID = k.split('_')[0]” 与 front_h_ids 比较
+    # def _base_id(k: str) -> str:
+    #     return str(k).split('_', 1)[0]
+    # 找到 _base_id 方法
     def _base_id(k: str) -> str:
-        return str(k).split('_', 1)[0]
+        # 新增去除 F_ 和 R_ 的安全过滤
+        k = str(k).replace("F_", "").replace("R_", "")
+        return k.split('_', 1)[0]
 
     # 4) 收集端点：按 ganjian 的 node1_id / node2_id 赋 ID
     id_to_coord = {}  # 去重：node_id -> (x,y,z)
@@ -1739,7 +1744,7 @@ def generate_outputs(final_coords_map: Dict[str, List[Point3D]], all_models_data
     jiedian: List[dict] = []
     pinjie: List[list] = [] 
 
-    EPS = 1e-6
+    EPS = 150.0
 
     for stem, pack in all_models_data.items():
         args = pack.get("ganjian_args", {})
@@ -1754,7 +1759,8 @@ def generate_outputs(final_coords_map: Dict[str, List[Point3D]], all_models_data
         base_sid = None
         min_cx = None
         for sid in front_support.keys():
-            seg3d = final_coords_map.get(str(sid))
+            seg3d = final_coords_map.get(f"F_{sid}") 
+            # seg3d = final_coords_map.get(str(sid))
             if not seg3d: continue
             cx = 0.5*(seg3d[0][0] + seg3d[1][0])
             if (min_cx is None) or (cx < min_cx):
@@ -1762,7 +1768,8 @@ def generate_outputs(final_coords_map: Dict[str, List[Point3D]], all_models_data
                 base_sid = str(sid)
         if not base_sid: continue
 
-        pA, pB = final_coords_map[base_sid]
+        # pA, pB = final_coords_map[base_sid]
+        pA, pB = final_coords_map[f"F_{base_sid}"]
         topP, botP = _top_bottom(pA, pB)
         sid10 = f"{base_sid}10"
         sid20 = f"{base_sid}20"
@@ -1786,7 +1793,8 @@ def generate_outputs(final_coords_map: Dict[str, List[Point3D]], all_models_data
         for sid in front_support.keys():
             if str(sid) == base_sid:
                 continue  # 跳过已处理的基准支撑
-            seg3d = final_coords_map.get(str(sid))
+            # seg3d = final_coords_map.get(str(sid))
+            seg3d = final_coords_map.get(f"F_{sid}") 
             if not seg3d:
                 continue
             pA, pB = seg3d
@@ -1822,7 +1830,8 @@ def generate_outputs(final_coords_map: Dict[str, List[Point3D]], all_models_data
 
         # === 修复：输出所有右侧支撑杆件 ===
         for rid in right_support.keys():
-            seg3d = final_coords_map.get(str(rid))
+            # seg3d = final_coords_map.get(str(rid))
+            seg3d = final_coords_map.get(f"R_{rid}")
             if not seg3d:
                 continue
             pA, pB = seg3d
@@ -1863,7 +1872,8 @@ def generate_outputs(final_coords_map: Dict[str, List[Point3D]], all_models_data
             return nid[:-1] + _m[nid[-1]] if nid and nid[-1] in _m else _plus_suffix(nid, +1)
 
         for hid in sorted(front_horizontal.keys(), key=lambda x: float(x)):
-            seg3d = final_coords_map.get(str(hid))
+            # seg3d = final_coords_map.get(str(hid))
+            seg3d = final_coords_map.get(f"F_{hid}")
             if not seg3d: continue
             L, R = _sort_lr(*seg3d)
             reuse_id = _closest_id(L, {sid10: topP, sid20: botP}, eps=EPS)
@@ -1891,7 +1901,8 @@ def generate_outputs(final_coords_map: Dict[str, List[Point3D]], all_models_data
             return nid[:-1] + _m[nid[-1]] if nid and nid[-1] in _m else _plus_suffix(nid, +2)
 
         for rid in sorted(right_horizontal.keys(), key=lambda x: float(x)):
-            seg3d = final_coords_map.get(str(rid))
+            # seg3d = final_coords_map.get(str(rid))
+            seg3d = final_coords_map.get(f"R_{rid}")
             if not seg3d: continue
             Lr, Rr = _sort_lr(*seg3d)
             nid_left_guess = _closest_id(Lr, known_nodes, eps=EPS)
@@ -1899,9 +1910,15 @@ def generate_outputs(final_coords_map: Dict[str, List[Point3D]], all_models_data
             if nid_left_guess:
                 left_node_id_r = nid_left_guess
             else:
-                # 【关键修复点】：同上，改为 Type 11，直接写入坐标
-                left_node_id_r = f"{base_id(rid)}10" 
+                # 避开横向可能产生的冲突，改为 30
+                left_node_id_r = f"{base_id(rid)}30" 
                 jiedian.append({"node_id": left_node_id_r, "node_type": 11, "X": round(Lr[0],3), "Y": round(Lr[1],3), "Z": round(Lr[2],3), "symmetry_type": 4})
+            # if nid_left_guess:
+            #     left_node_id_r = nid_left_guess
+            # else:
+            #     # 【关键修复点】：同上，改为 Type 11，直接写入坐标
+            #     left_node_id_r = f"{base_id(rid)}10" 
+            #     jiedian.append({"node_id": left_node_id_r, "node_type": 11, "X": round(Lr[0],3), "Y": round(Lr[1],3), "Z": round(Lr[2],3), "symmetry_type": 4})
                 known_nodes[left_node_id_r] = Lr
                 known_nodes[_plus_suffix(left_node_id_r, +1)] = _sym_pt(Lr, 1)
                 known_nodes[_plus_suffix(left_node_id_r, +2)] = _sym_pt(Lr, 2)
@@ -1921,7 +1938,8 @@ def generate_outputs(final_coords_map: Dict[str, List[Point3D]], all_models_data
 
         # 正面 X 型
         for xid, seg2d in front_x.items():
-            seg3d = final_coords_map.get(str(xid))
+            # seg3d = final_coords_map.get(str(xid))
+            seg3d = final_coords_map.get(f"F_{xid}")
             if not seg3d: continue
             Lx, Rx = _sort_lr(*seg3d)
             
@@ -1936,7 +1954,7 @@ def generate_outputs(final_coords_map: Dict[str, List[Point3D]], all_models_data
                 known_nodes[node1] = Lx
 
             right_reuse = _closest_id(Rx, known_nodes, eps=EPS)
-            if right_reuse and not _is_base_node(right_reuse): right_reuse = None
+            # if right_reuse and not _is_base_node(right_reuse): right_reuse = None
             if right_reuse:
                 node2 = right_reuse
             else:
@@ -1949,24 +1967,40 @@ def generate_outputs(final_coords_map: Dict[str, List[Point3D]], all_models_data
 
         # 右面 X 型 (优先复用；复用不到则补建节点，避免漏杆件)
         for xid, seg2d in right_x.items():
-            seg3d = final_coords_map.get(str(xid))
+            # seg3d = final_coords_map.get(str(xid))
+            seg3d = final_coords_map.get(f"R_{xid}") 
             if not seg3d: continue
             Lx, Rx = _sort_lr(*seg3d)
 
             n1_guess = _closest_id(Lx, known_nodes, eps=EPS)
             n2_guess = _closest_id(Rx, known_nodes, eps=EPS)
 
+            # if n1_guess:
+            #     node1 = n1_guess
+            # else:
+            #     node1 = f"{_x_node_prefix(xid)}11"
+            #     jiedian.append({"node_id": node1, "node_type": 11, "X": round(Lx[0],3), "Y": round(Lx[1],3), "Z": round(Lx[2],3), "symmetry_type": 4})
+            #     known_nodes[node1] = Lx
+
+            # if n2_guess:
+            #     node2 = n2_guess
+            # else:
+            #     node2 = f"{_x_node_prefix(xid)}13"
+            #     jiedian.append({"node_id": node2, "node_type": 11, "X": round(Rx[0],3), "Y": round(Rx[1],3), "Z": round(Rx[2],3), "symmetry_type": 4})
+            #     known_nodes[node2] = Rx
             if n1_guess:
                 node1 = n1_guess
             else:
-                node1 = f"{_x_node_prefix(xid)}11"
+                # 避开正面 10 家族的 11，改为 30
+                node1 = f"{_x_node_prefix(xid)}30"  
                 jiedian.append({"node_id": node1, "node_type": 11, "X": round(Lx[0],3), "Y": round(Lx[1],3), "Z": round(Lx[2],3), "symmetry_type": 4})
                 known_nodes[node1] = Lx
 
             if n2_guess:
                 node2 = n2_guess
             else:
-                node2 = f"{_x_node_prefix(xid)}13"
+                # 避开正面 20 家族的 13，改为 40
+                node2 = f"{_x_node_prefix(xid)}40"  
                 jiedian.append({"node_id": node2, "node_type": 11, "X": round(Rx[0],3), "Y": round(Rx[1],3), "Z": round(Rx[2],3), "symmetry_type": 4})
                 known_nodes[node2] = Rx
 
@@ -2042,7 +2076,9 @@ def build_vertical_reuse_aliases(final_coords_map: Dict[str, List[Point3D]],
         front_support: Dict[str, list] = {str(k): v for k, v in (args.get("front_support") or {}).items()}
         base_sid, min_cx = None, None
         for sid in sorted(front_support.keys(), key=lambda x: float(x)):
-            seg3d = final_coords_map.get(str(sid))
+            # seg3d = final_coords_map.get(str(sid))
+            seg3d = final_coords_map.get(f"F_{sid}")
+
             if not seg3d or len(seg3d) < 2:
                 continue
             cx = 0.5 * (float(seg3d[0][0]) + float(seg3d[1][0]))
@@ -2050,7 +2086,8 @@ def build_vertical_reuse_aliases(final_coords_map: Dict[str, List[Point3D]],
                 min_cx, base_sid = cx, str(sid)
         if not base_sid:
             continue
-        pA, pB = final_coords_map[base_sid]
+        # pA, pB = final_coords_map[base_sid]
+        pA, pB = final_coords_map[f"F_{base_sid}"]
         topP, botP = _top_bottom(pA, pB)  # z 小者为上端
         parts.append({"stem": stem, "sid": base_sid, "top": topP, "bot": botP})
 

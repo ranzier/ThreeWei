@@ -129,7 +129,7 @@ def transform_data(input_data):
 
     return groups
 
-def cluster_points(points, threshold=150.0):
+def cluster_points(points, threshold=10.0):
     """
     对点进行聚类，如果当前点与前一个点距离小于阈值，则合并到前一个聚类
 
@@ -172,7 +172,7 @@ def cluster_points(points, threshold=150.0):
     # 返回聚类中心点
     return [cluster["centroid"] for cluster in clusters]
 
-def mark_endpoint_for_real_points(real_points,coordinates_data,rod_id,left_endpoint_3d_id,right_endpoint_3d_id,threshold=150):
+def mark_endpoint_for_real_points(real_points,coordinates_data,rod_id,left_endpoint_3d_id,right_endpoint_3d_id,threshold=10):
     """
     判断这个交点是不是这个杆件上的两个端点中的其中一个，如果是的话，用端点的节点编号标记它
     """
@@ -194,7 +194,7 @@ def mark_endpoint_for_real_points(real_points,coordinates_data,rod_id,left_endpo
 
     return real_points
 
-def find_ganjian_by_nodes(node_list, coordinates_data, threshold=150):
+def find_ganjian_by_nodes(node_list, coordinates_data, threshold=10):
     """
     根据节点列表，通过节点的二维坐标查找对应的杆件编号
     """
@@ -359,7 +359,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
 
 
 
-    yuzhi = 100#是否在直线上距离阈值
+    yuzhi = 10#是否在直线上距离阈值
     data = transform_data(data1)
 
     # 将16个端点按照x轴的正负进行分组，【【【担架1的上端点】，【担架1的下端点】】，【【担架2的上端点】，【担架2的下端点】】，【【担架3的上端点】，【担架3的下端点】】，【】，【】...】
