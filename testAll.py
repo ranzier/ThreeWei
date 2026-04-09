@@ -2,10 +2,8 @@ import tran2dto3d
 
 # danjia_dir = r"D:\Sanwei\zuobiao\DanJia\1E2-SDJ"
 # tashen_dir = r"D:\Sanwei\zuobiao\TaShen\1E2-SDJ"
-# danjia_dir = r"D:\Sanwei\zuobiao\DanJia\J1"
-# tashen_dir = r"D:\Sanwei\zuobiao\TaShen\J1"
-danjia_dir = r"D:\Sanwei\zuobiao\DanJia\J1-new"
-tashen_dir = r"D:\Sanwei\zuobiao\TaShen\J1-new"
+danjia_dir = r"D:\Sanwei\zuobiao\DanJia\J1"
+tashen_dir = r"D:\Sanwei\zuobiao\TaShen\J1"
 project_path = r"D:\Sanwei\output_path"
 savepath_ui = r"D:\Sanwei\output_path\savepath_ui"
 

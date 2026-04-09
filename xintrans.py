@@ -129,7 +129,7 @@ def transform_data(input_data):
 
     return groups
 
-def cluster_points(points, threshold=10.0):
+def cluster_points(points, threshold):
     """
     对点进行聚类，如果当前点与前一个点距离小于阈值，则合并到前一个聚类
 
@@ -172,7 +172,7 @@ def cluster_points(points, threshold=10.0):
     # 返回聚类中心点
     return [cluster["centroid"] for cluster in clusters]
 
-def mark_endpoint_for_real_points(real_points,coordinates_data,rod_id,left_endpoint_3d_id,right_endpoint_3d_id,threshold=10):
+def mark_endpoint_for_real_points(real_points,coordinates_data,rod_id,left_endpoint_3d_id,right_endpoint_3d_id,threshold):
     """
     判断这个交点是不是这个杆件上的两个端点中的其中一个，如果是的话，用端点的节点编号标记它
     """
@@ -194,7 +194,7 @@ def mark_endpoint_for_real_points(real_points,coordinates_data,rod_id,left_endpo
 
     return real_points
 
-def find_ganjian_by_nodes(node_list, coordinates_data, threshold=10):
+def find_ganjian_by_nodes(node_list, coordinates_data, threshold):
     """
     根据节点列表，通过节点的二维坐标查找对应的杆件编号
     """
@@ -283,12 +283,12 @@ def get_jiaodian_on_ganjian(coordinates_data, drawing_id, pj, rod_101_id, rod_10
         intersections_101.sort(key=lambda point: point[0])
     else:
         intersections_101.sort(key=lambda point: point[0], reverse=True)
-    node_101 = cluster_points(intersections_101, threshold=150.0)  # 对杆件上的交点进行聚类得到node_101[]这个聚类后的交点数组
+    node_101 = cluster_points(intersections_101, threshold=yuzhi)  # 对杆件上的交点进行聚类得到node_101[]这个聚类后的交点数组
     if (pj[drawing_id - 1][1][1][0] > 0):
         intersections_103.sort(key=lambda point: point[0])
     else:
         intersections_103.sort(key=lambda point: point[0], reverse=True)
-    node_103 = cluster_points(intersections_103, threshold=150.0)
+    node_103 = cluster_points(intersections_103, threshold=yuzhi)
 
     return node_101,node_103
 
@@ -319,12 +319,12 @@ def get_real_x_of_jiaodian(coordinates_data, drawing_id, filtered_101, newx, pj,
         })
     return real_101
 
-def generate_ganjian(coordinatesFront_data, node_101_nodes, node_103_nodes):
+def generate_ganjian(coordinatesFront_data, node_101_nodes, node_103_nodes,yuzhi):
     """
     根据节点从二维坐标信息中找到杆件编号
     """
-    ganjian_nodes_table_101 = find_ganjian_by_nodes(node_101_nodes, coordinatesFront_data)
-    ganjian_nodes_table_103 = find_ganjian_by_nodes(node_103_nodes, coordinatesFront_data)
+    ganjian_nodes_table_101 = find_ganjian_by_nodes(node_101_nodes, coordinatesFront_data,yuzhi)
+    ganjian_nodes_table_103 = find_ganjian_by_nodes(node_103_nodes, coordinatesFront_data,yuzhi)
     all_node_member_map = {}
     all_node_member_map.update(ganjian_nodes_table_101)
     all_node_member_map.update(ganjian_nodes_table_103)
@@ -359,7 +359,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
 
 
 
-    yuzhi = 10#是否在直线上距离阈值
+    yuzhi = 150   #阈值
     data = transform_data(data1)
 
     # 将16个端点按照x轴的正负进行分组，【【【担架1的上端点】，【担架1的下端点】】，【【担架2的上端点】，【担架2的下端点】】，【【担架3的上端点】，【担架3的下端点】】，【】，【】...】
@@ -424,7 +424,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
             right_3d_id = pj[drawing_id - 1][1][0]  # 301 与塔身相交端点
 
         # 标记节点中的端点
-        real_101 = mark_endpoint_for_real_points(real_101,coordinatesFront_data,rod_101_id,left_3d_id,right_3d_id)
+        real_101 = mark_endpoint_for_real_points(real_101,coordinatesFront_data,rod_101_id,left_3d_id,right_3d_id,yuzhi)
 
         if (pj[drawing_id - 1][1][1][0] > 0):
             left_3d_id = pj[drawing_id - 1][0][0]  # 303 与塔身相交端点
@@ -432,7 +432,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
         else:
             left_3d_id = f"{jiandian_id + 20}"
             right_3d_id = pj[drawing_id - 1][0][0]  # 301 与塔身相交端点
-        real_103 = mark_endpoint_for_real_points(real_103, coordinatesFront_data, rod_103_id, left_3d_id, right_3d_id)
+        real_103 = mark_endpoint_for_real_points(real_103, coordinatesFront_data, rod_103_id, left_3d_id, right_3d_id,yuzhi)
 
         # ----------------生成节点---------------------------------------------------------------------------------------#
         # 为交点创建节点
@@ -495,7 +495,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
 
         # # ---------------生成杆件-----------------------------------------------------------------------------------#
 
-        member_to_nodes = generate_ganjian(coordinatesFront_data, node_101_nodes, node_103_nodes)
+        member_to_nodes = generate_ganjian(coordinatesFront_data, node_101_nodes, node_103_nodes,yuzhi)
 
         for member_id, node_list in member_to_nodes.items():
             if len(node_list) == 2:  # 只有两个端点的杆件才是合法的
@@ -523,7 +523,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
         else:
             left_3d_id = f"{jiandian_id + 20}"
             right_3d_id = pj[drawing_id - 1][1][0]  # 301 与塔身相交端点
-        real_101 = mark_endpoint_for_real_points(real_101,coordinatesBottom_data,rod_101_id,left_3d_id,right_3d_id)
+        real_101 = mark_endpoint_for_real_points(real_101,coordinatesBottom_data,rod_101_id,left_3d_id,right_3d_id,yuzhi)
 
 
         if (pj[drawing_id - 1][1][1][0] > 0):
@@ -532,7 +532,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
         else:
             left_3d_id = f"{jiandian_id + 22}"
             right_3d_id = str(int(pj[drawing_id - 1][1][0]) + 2)
-        real_102 = mark_endpoint_for_real_points(real_102, coordinatesBottom_data, rod_102_id, left_3d_id, right_3d_id)
+        real_102 = mark_endpoint_for_real_points(real_102, coordinatesBottom_data, rod_102_id, left_3d_id, right_3d_id,yuzhi)
 
         # ----------------生成节点---------------------------------------------------------------------------------------#
         node_101_ids = []
@@ -586,7 +586,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
 
         # ----------------生成杆件---------------------------------------------------------------------------------------#
 
-        member_to_nodes = generate_ganjian(coordinatesBottom_data, node_101_ids, node_102_ids)
+        member_to_nodes = generate_ganjian(coordinatesBottom_data, node_101_ids, node_102_ids,yuzhi)
 
         for member_id, node_list in member_to_nodes.items():
             if len(node_list) == 2:  # 只有两个端点的杆件才是合法的
@@ -613,7 +613,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
             left_3d_id = f"{jiandian_id + 20}"
             right_3d_id = pj[drawing_id - 1][0][0]  # 301 与塔身相交端点
 
-        real_103 = mark_endpoint_for_real_points(real_103, coordinatesOverhead_data, rod_103_id, left_3d_id, right_3d_id)
+        real_103 = mark_endpoint_for_real_points(real_103, coordinatesOverhead_data, rod_103_id, left_3d_id, right_3d_id,yuzhi)
 
         if (pj[drawing_id - 1][1][1][0] > 0):
             left_3d_id = str(int(pj[drawing_id - 1][0][0]) + 2)
@@ -622,7 +622,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
             left_3d_id = f"{jiandian_id + 22}"
             right_3d_id = str(int(pj[drawing_id - 1][0][0]) + 2)
 
-        real_104 = mark_endpoint_for_real_points(real_104, coordinatesOverhead_data, rod_104_id, left_3d_id, right_3d_id)
+        real_104 = mark_endpoint_for_real_points(real_104, coordinatesOverhead_data, rod_104_id, left_3d_id, right_3d_id,yuzhi)
 
         # ----------------生成节点---------------------------------------------------------------------------------------#
         node_103_ids = []
@@ -673,7 +673,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
             node_104_ids.append(node_info)
 
         # ----------------生成杆件---------------------------------------------------------------------------------------#
-        member_to_nodes = generate_ganjian(coordinatesOverhead_data, node_103_ids, node_104_ids)
+        member_to_nodes = generate_ganjian(coordinatesOverhead_data, node_103_ids, node_104_ids,yuzhi)
 
         for member_id, node_list in member_to_nodes.items():
             if len(node_list) == 2:  # 只有两个端点的杆件才是合法的
@@ -757,7 +757,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
             left_3d_id = f"{jiandian_id + 20}"
             right_3d_id = pj[drawing_id - 1][0][0]  # 301 与塔身相交端点
 
-        real_101 = mark_endpoint_for_real_points(real_101, coordinatesFront_data, rod_101_id, left_3d_id, right_3d_id)
+        real_101 = mark_endpoint_for_real_points(real_101, coordinatesFront_data, rod_101_id, left_3d_id, right_3d_id,yuzhi)
 
         if (pj[drawing_id - 1][1][1][0] > 0):
             left_3d_id = pj[drawing_id - 1][1][0]  # 301 与塔身相交端点
@@ -766,7 +766,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
             left_3d_id = f"{jiandian_id + 20}"
             right_3d_id = pj[drawing_id - 1][1][0]  # 301 与塔身相交端点
 
-        real_103 = mark_endpoint_for_real_points(real_103, coordinatesFront_data, rod_103_id, left_3d_id, right_3d_id)
+        real_103 = mark_endpoint_for_real_points(real_103, coordinatesFront_data, rod_103_id, left_3d_id, right_3d_id,yuzhi)
 
         # ---------------生成节点-----------------------------------------------------------------------------------#
        # 为交点创建节点
@@ -829,7 +829,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
 
         # ---------------生成杆件-----------------------------------------------------------------------------------#
 
-        member_to_nodes = generate_ganjian(coordinatesFront_data, node_101_nodes, node_103_nodes)
+        member_to_nodes = generate_ganjian(coordinatesFront_data, node_101_nodes, node_103_nodes,yuzhi)
 
         for member_id, node_list in member_to_nodes.items():
             if len(node_list) == 2:  # 只有两个端点的杆件才是合法的
@@ -857,7 +857,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
             left_3d_id = f"{jiandian_id + 20}"
             right_3d_id = pj[drawing_id - 1][0][0]  # 301 与塔身相交端点
 
-        real_101 = mark_endpoint_for_real_points(real_101, coordinatesOverhead_data, rod_101_id, left_3d_id, right_3d_id)
+        real_101 = mark_endpoint_for_real_points(real_101, coordinatesOverhead_data, rod_101_id, left_3d_id, right_3d_id,yuzhi)
 
         if (pj[drawing_id - 1][1][1][0] > 0):
             left_3d_id = str(int(pj[drawing_id - 1][0][0]) + 2)
@@ -866,7 +866,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
             left_3d_id = f"{jiandian_id + 22}"
             right_3d_id = str(int(pj[drawing_id - 1][0][0]) + 2)
 
-        real_102 = mark_endpoint_for_real_points(real_102, coordinatesOverhead_data, rod_102_id, left_3d_id, right_3d_id)
+        real_102 = mark_endpoint_for_real_points(real_102, coordinatesOverhead_data, rod_102_id, left_3d_id, right_3d_id,yuzhi)
 
         # ----------------生成节点---------------------------------------------------------------------------------------#
         node_101_ids = []
@@ -919,7 +919,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
 
         # ----------------生成杆件---------------------------------------------------------------------------------------#
 
-        member_to_nodes = generate_ganjian(coordinatesOverhead_data, node_101_ids, node_102_ids)
+        member_to_nodes = generate_ganjian(coordinatesOverhead_data, node_101_ids, node_102_ids,yuzhi)
 
         for member_id, node_list in member_to_nodes.items():
             if len(node_list) == 2:  # 只有两个端点的杆件才是合法的
@@ -945,7 +945,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
         else:
             left_3d_id = f"{jiandian_id + 20}"
             right_3d_id = pj[drawing_id - 1][1][0]  # 301 与塔身相交端点
-        real_103 = mark_endpoint_for_real_points(real_103,coordinatesBottom_data,rod_103_id,left_3d_id,right_3d_id)
+        real_103 = mark_endpoint_for_real_points(real_103,coordinatesBottom_data,rod_103_id,left_3d_id,right_3d_id,yuzhi)
 
         if (pj[drawing_id - 1][1][1][0] > 0):
             left_3d_id = str(int(pj[drawing_id - 1][1][0]) + 2)
@@ -953,7 +953,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
         else:
             left_3d_id = f"{jiandian_id + 22}"
             right_3d_id = str(int(pj[drawing_id - 1][1][0]) + 2)
-        real_104 = mark_endpoint_for_real_points(real_104, coordinatesBottom_data, rod_104_id, left_3d_id, right_3d_id)
+        real_104 = mark_endpoint_for_real_points(real_104, coordinatesBottom_data, rod_104_id, left_3d_id, right_3d_id,yuzhi)
 
 
         # ----------------生成节点---------------------------------------------------------------------------------------#
@@ -1006,7 +1006,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
             node_104_ids.append(node_info)
         # ----------------生成杆件---------------------------------------------------------------------------------------#
 
-        member_to_nodes = generate_ganjian(coordinatesBottom_data, node_103_ids, node_104_ids)
+        member_to_nodes = generate_ganjian(coordinatesBottom_data, node_103_ids, node_104_ids,yuzhi)
 
         for member_id, node_list in member_to_nodes.items():
             if len(node_list) == 2:  # 只有两个端点的杆件才是合法的
