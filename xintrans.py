@@ -1,9 +1,19 @@
 import math
-import json
+import os
 from collections import defaultdict
-
 from get_first_ganjian_id import detect_main_rods_enhanced
 
+
+def count_txt_files(folder_path):
+    """
+    统计文件夹内 .txt 文件数量（不递归）
+    """
+    try:
+        entries = os.listdir(folder_path)
+    except FileNotFoundError:
+        return 0
+
+    return sum(1 for name in entries if name.lower().endswith(".txt"))
 
 def dist_points(p1, p2):
     """计算点之间距离"""
@@ -80,7 +90,7 @@ def dist_point_to_line(point, line_point1, line_point2):
 
 def line_intersection(line1, line2):
     """
-    计算两条直线的交点
+    计算两条直线的交点，返回交点坐标（x,y）
 
     参数:
         line1: 第一条直线，格式为 [(x1, y1), (x2, y2)]
@@ -107,6 +117,9 @@ def line_intersection(line1, line2):
     return (x, y)
 
 def dist_z(p1, p2):
+    """
+    计算三维点之间的欧氏距离
+    """
     x1, y1, z1 = p1
     x2, y2, z2 = p2
     return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2 + (z2 - z1) ** 2)
@@ -115,11 +128,9 @@ def transform_data(input_data):
     """
     将输入的节点数据按每4个一组进行分组
 
-    参数:
-        input_data: 输入的节点数据列表
-
-    返回:
-        分组后的数据
+    示例:
+        输入: [1, 2, 3, 4, 5, 6, 7, 8]
+        输出: [[1, 2, 3, 4], [5, 6, 7, 8]]
     """
     # 将数据分成4组，每组4个节点
     groups = []
@@ -133,12 +144,9 @@ def cluster_points(points, threshold):
     """
     对点进行聚类，如果当前点与前一个点距离小于阈值，则合并到前一个聚类
 
-    参数:
-        points: 点列表，每个点为 (x, y) 格式
-        threshold: 聚类阈值，默认10.0
-
-    返回:
-        聚类后的点列表
+    示例:
+        输入: points=[(0, 0), (1, 1), (10, 10)], threshold=3
+        输出: [(0.5, 0.5), (10, 10)]
     """
     clusters = []
 
@@ -174,8 +182,9 @@ def cluster_points(points, threshold):
 
 def mark_endpoint_for_real_points(real_points,coordinates_data,rod_id,left_endpoint_3d_id,right_endpoint_3d_id,threshold):
     """
-    判断这个交点是不是这个杆件上的两个端点中的其中一个，如果是的话，用端点的节点编号标记它
+    判断交点是否为杆件端点之一，若是则用端点的三维节点编号标记
     """
+
     # 杆件的两个二维端点
     rod_p1, rod_p2 = coordinates_data[rod_id]
 
@@ -219,7 +228,9 @@ def find_ganjian_by_nodes(node_list, coordinates_data, threshold):
 
 def calc_jiandian_xyz(coordinates_data, drawing_id, pj,pj_view_index):
     """
+    pj_view_index：0代表担架的上端点，1代表担架的下端点
     生成尖点的真实XYZ的值
+    输出：10020：（x,y,z）
     """
     start_01x = coordinates_data[drawing_id * 100 + 1][0][0]
     start_01y = coordinates_data[drawing_id * 100 + 1][0][1]
@@ -251,7 +262,11 @@ def calc_jiandian_xyz(coordinates_data, drawing_id, pj,pj_view_index):
 
 def get_jiaodian_on_ganjian(coordinates_data, drawing_id, pj, rod_101_id, rod_103_id, yuzhi):
     """
-    从一类杆件上找到交点
+    找二类杆件与一类杆件在一类杆件上的交点坐标
+
+    输出：
+    node_101: [(10,20),(50,70),(90,100)] 表示101一类杆件上有三个交点（二类节点）
+    node_103同理
     """
     rod_101_points = coordinates_data[rod_101_id]
     rod_103_points = coordinates_data[rod_103_id]
@@ -278,6 +293,7 @@ def get_jiaodian_on_ganjian(coordinates_data, drawing_id, pj, rod_101_id, rod_10
             intersection_103 = line_intersection(points, rod_103_points)
             if intersection_103 is not None:
                 intersections_103.append(intersection_103)
+
     # 对在301杆件上的交点这个数组的元素进行排序，按照二维坐标的x轴从小到大进行排序
     if (pj[drawing_id - 1][1][1][0] > 0):
         intersections_101.sort(key=lambda point: point[0])
@@ -292,13 +308,16 @@ def get_jiaodian_on_ganjian(coordinates_data, drawing_id, pj, rod_101_id, rod_10
 
     return node_101,node_103
 
-def get_real_x_of_jiaodian(coordinates_data, drawing_id, filtered_101, newx, pj, rod_101_id, judge_pj_index,value_pj_index):
+def get_real_x_of_jiaodian(coordinates_data, drawing_id, filtered, newx, pj, rod_id, judge_pj_index,value_pj_index):
     """
-    计算交点的真实x值
+    计算一类杆件上交点的真实x坐标
+    输出：[{"point_2d": (10,20), "x_3d": 123.456}, {...}, ...] 表示每个交点的二维坐标和对应的真实x坐标
     """
+
     # 得到301杆件的两个端点的二维X坐标
-    min_2d_x = coordinates_data[rod_101_id][0][0]
-    max_2d_x = coordinates_data[rod_101_id][1][0]
+    min_2d_x = coordinates_data[rod_id][0][0]
+    max_2d_x = coordinates_data[rod_id][1][0]
+
     # 得到301 杆件在三维中的两端的 X 坐标
     if (pj[drawing_id - 1][judge_pj_index][1][0] > 0):
         min_3d_x = pj[drawing_id - 1][value_pj_index][1][0]  # 这个是301杆件与塔身相交的端点的三维X坐标
@@ -306,25 +325,27 @@ def get_real_x_of_jiaodian(coordinates_data, drawing_id, filtered_101, newx, pj,
     else:
         min_3d_x = newx
         max_3d_x = pj[drawing_id - 1][value_pj_index][1][0]
-    # 计算比例并转换为真实x坐标
-    real_101 = []
-    for point in filtered_101:
+
+    real = []  # 计算比例并转换为真实x坐标
+
+    for point in filtered:
         # 计算点在二维杆件上的x坐标比例
         x_ratio = (point[0] - min_2d_x) / (max_2d_x - min_2d_x)
         # 根据比例计算真实x坐标
         real_x = min_3d_x + x_ratio * (max_3d_x - min_3d_x)
-        real_101.append({
+        real.append({
             "point_2d": point,  # (x2d, y2d)
             "x_3d": real_x  # 对应的真实x
         })
-    return real_101
 
-def generate_ganjian(coordinatesFront_data, node_101_nodes, node_103_nodes,yuzhi):
+    return real
+
+def generate_ganjian(coordinates_data, node_101_nodes, node_103_nodes,yuzhi):
     """
     根据节点从二维坐标信息中找到杆件编号
     """
-    ganjian_nodes_table_101 = find_ganjian_by_nodes(node_101_nodes, coordinatesFront_data,yuzhi)
-    ganjian_nodes_table_103 = find_ganjian_by_nodes(node_103_nodes, coordinatesFront_data,yuzhi)
+    ganjian_nodes_table_101 = find_ganjian_by_nodes(node_101_nodes, coordinates_data,yuzhi)
+    ganjian_nodes_table_103 = find_ganjian_by_nodes(node_103_nodes, coordinates_data,yuzhi)
     all_node_member_map = {}
     all_node_member_map.update(ganjian_nodes_table_101)
     all_node_member_map.update(ganjian_nodes_table_103)
@@ -335,9 +356,6 @@ def generate_ganjian(coordinatesFront_data, node_101_nodes, node_103_nodes,yuzhi
     return member_to_nodes
 
 
-
-
-
 jiedian = []
 ganjian = []
 
@@ -346,7 +364,6 @@ def trans(file_path, drawing_id, data1, drawing_type):
     参数:
         file_path: 包含三视图坐标数据的文件路径
         drawing_id: 图纸序号
-        l1, l2: 对称轴附近的杆件编号
     """
 
     with open(file_path, 'r', encoding='utf-8') as f:
@@ -357,10 +374,8 @@ def trans(file_path, drawing_id, data1, drawing_type):
     coordinatesBottom_data = namespace.get('coordinatesBottom_data', {})
     coordinatesOverhead_data = namespace.get('coordinatesOverhead_data', {})
 
-
-
     yuzhi = 150   #阈值
-    data = transform_data(data1)
+    data = transform_data(data1) # 将担架和塔身连接点每四个分为一组
 
     # 将16个端点按照x轴的正负进行分组，【【【担架1的上端点】，【担架1的下端点】】，【【担架2的上端点】，【担架2的下端点】】，【【担架3的上端点】，【担架3的下端点】】，【】，【】...】
     pj = []
@@ -384,7 +399,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
 
     jiandian_id = (drawing_id * 100 + 1) * 100
 
-    if(drawing_id * 100 + 1 in coordinatesBottom_data):
+    if(drawing_id * 100 + 1 in coordinatesBottom_data): # 处理下面的担架（非最上面的两个担架）
 
         ############################################################################################################
         # 1. 计算尖点的三维信息
@@ -416,14 +431,14 @@ def trans(file_path, drawing_id, data1, drawing_type):
         real_101 = get_real_x_of_jiaodian(coordinatesFront_data, drawing_id, jiaodian_101, newx, pj, rod_101_id, 1, 1)
         real_103 = get_real_x_of_jiaodian(coordinatesFront_data, drawing_id, jiaodian_103, newx, pj, rod_103_id, 0, 0)
 
-        if (pj[drawing_id - 1][1][1][0] > 0):
-            left_3d_id = pj[drawing_id - 1][1][0]  # 301 与塔身相交端点
+        if (pj[drawing_id - 1][1][1][0] > 0): # 第 drawing_id 号担架下连接点的 x 坐标
+            left_3d_id = pj[drawing_id - 1][1][0]  # 301 与塔身相交端点的节点编号
             right_3d_id = f"{jiandian_id + 20}"  # 尖点
         else:
             left_3d_id = f"{jiandian_id + 20}"
             right_3d_id = pj[drawing_id - 1][1][0]  # 301 与塔身相交端点
 
-        # 标记节点中的端点
+        # 标记交点中的端点
         real_101 = mark_endpoint_for_real_points(real_101,coordinatesFront_data,rod_101_id,left_3d_id,right_3d_id,yuzhi)
 
         if (pj[drawing_id - 1][1][1][0] > 0):
@@ -440,6 +455,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
         node_103_nodes = []
 
         new_node_cnt = 0  # 只统计“真正新建的节点”
+
         # 为101杆件上的交点创建节点
         for i, item in enumerate(real_101):
             if item.get("endpoint_3d_id", -1) != -1:
@@ -540,7 +556,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
 
         new_node_cnt = 0  # 只统计“真正新建的节点”
 
-        for i, item in enumerate(real_101):
+        for i, item in enumerate(real_102):
             if item.get("endpoint_3d_id", -1) != -1:
                 # 复用已有端点节点
                 node_101_ids.append({
@@ -567,7 +583,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
             })
 
         new_node_cnt = 0  # 只统计“真正新建的节点”
-        for i, item in enumerate(real_102):
+        for i, item in enumerate(real_101):
             if item.get("endpoint_3d_id", -1) != -1:
                 # 复用已有端点节点
                 node_102_ids.append({
@@ -1062,13 +1078,10 @@ def trans(file_path, drawing_id, data1, drawing_type):
                 j["symmetry_type"] = 4
 
 def work(file_path, data, drawing_type):
-    if drawing_type=="1E2-SDJ":
-        for i in range(1,9):
-            specific_file_path = f"{file_path}\\0{i}.txt"
-            trans(specific_file_path, i, data,drawing_type)
-    elif drawing_type == "J1":
-        for i in range(1, 5):
-            specific_file_path = f"{file_path}\\0{i}.txt"
-            trans(specific_file_path, i, data,drawing_type)
+    txt_count = count_txt_files(file_path)
+
+    for i in range(1, txt_count + 1):
+        specific_file_path = f"{file_path}\\0{i}.txt"
+        trans(specific_file_path, i, data,drawing_type)
 
     return jiedian, ganjian
