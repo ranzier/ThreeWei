@@ -356,6 +356,36 @@ def generate_ganjian(coordinates_data, node_101_nodes, node_103_nodes,yuzhi):
     return member_to_nodes
 
 
+def find_missing_members(ganjian, coordinates_data, main_rod_ids):
+    """
+    通过对比 ganjian 和 当前视图的坐标数据，找出 ganjian 中缺失的 member_id 及其二维坐标
+
+    参数:
+        ganjian: 已生成的杆件列表，每个字典包含 'member_id'
+        coordinates_data: 当前视图的坐标数据，键为 member_id，值为两端点的二维坐标数据
+        main_rod_ids: 一类杆件的 ID 列表（可选），如包含则从缺失结果中剔除
+
+    返回:
+        missing_members: 字典格式，键为缺失的 member_id，值为其对应的二维坐标点列表
+    """
+    # 收集 ganjian 中已有的 member_id（统一转换为字符串以方便比对）
+    existing_members = {str(item.get("member_id")) for item in ganjian if "member_id" in item}
+
+    # 对比查找并收集缺失的 member_id 及其二维坐标
+    main_rod_id_set = {str(m_id) for m_id in (main_rod_ids or [])}
+    missing_members = {}
+    if coordinates_data:
+        for m_id, points in coordinates_data.items():
+            m_id_str = str(m_id)
+            if m_id_str not in existing_members and m_id_str not in main_rod_id_set:
+                missing_members[m_id_str] = points
+
+    return missing_members
+
+
+
+
+
 jiedian = []
 ganjian = []
 
@@ -395,11 +425,19 @@ def trans(file_path, drawing_id, data1, drawing_type):
     if drawing_type == "J1":
         # 原 pj 是 8 个担架，这里只取 0,2,4,6 对应的
         pj = [pj[i] for i in (0, 2, 4, 6)]
+    elif drawing_type in ("J3", "J4"):
+        pj = [pj[i] for i in (1, 0, 3, 2, 5, 4, 7, 6)]
 
 
     jiandian_id = (drawing_id * 100 + 1) * 100
 
     if(drawing_id * 100 + 1 in coordinatesBottom_data): # 处理下面的担架（非最上面的两个担架）
+
+        rod_101_id, rod_103_id = detect_main_rods_enhanced(coordinatesFront_data)
+        rod_101_id, rod_102_id = detect_main_rods_enhanced(coordinatesBottom_data)
+        rod_103_id, rod_104_id = detect_main_rods_enhanced(coordinatesOverhead_data)
+        main_rod_ids = [rod_101_id, rod_102_id, rod_103_id, rod_104_id]
+
 
         ############################################################################################################
         # 1. 计算尖点的三维信息
@@ -416,13 +454,10 @@ def trans(file_path, drawing_id, data1, drawing_type):
         }
         jiedian.append(new_node)
 
+
         ############################################################################################################
         # 2. 正视图
         ############################################################################################################
-
-        rod_101_id, rod_103_id = detect_main_rods_enhanced(coordinatesFront_data)
-        rod_101_id, rod_102_id = detect_main_rods_enhanced(coordinatesBottom_data)
-        rod_103_id, rod_104_id = detect_main_rods_enhanced(coordinatesOverhead_data)
 
         # 得到两个一类杆件上的交点
         jiaodian_101,jiaodian_103 = get_jiaodian_on_ganjian(coordinatesFront_data,drawing_id, pj, rod_101_id,rod_103_id, yuzhi)
@@ -613,6 +648,12 @@ def trans(file_path, drawing_id, data1, drawing_type):
                     "symmetry_type": 0
                 })
 
+        # 在当前位置添加用法示例
+        missing_members = find_missing_members(ganjian, coordinatesBottom_data, main_rod_ids)
+        for member_id, endpoints in missing_members.items():
+            print(f"missing member_id: {member_id}, endpoints: {endpoints}")
+
+
         ############################################################################################################
         # 4. 顶视图
         ############################################################################################################
@@ -736,6 +777,12 @@ def trans(file_path, drawing_id, data1, drawing_type):
 
     else:
 
+        rod_101_id, rod_103_id = detect_main_rods_enhanced(coordinatesFront_data)
+        rod_103_id, rod_104_id = detect_main_rods_enhanced(coordinatesBottom_data)
+        rod_101_id, rod_102_id = detect_main_rods_enhanced(coordinatesOverhead_data)
+        main_rod_ids = [rod_101_id, rod_102_id, rod_103_id, rod_104_id]
+
+
         ############################################################################################################
         # 1. 计算尖点的三维信息
         ############################################################################################################
@@ -754,11 +801,6 @@ def trans(file_path, drawing_id, data1, drawing_type):
         ############################################################################################################
         # 2. 正视图
         ############################################################################################################
-
-
-        rod_101_id, rod_103_id = detect_main_rods_enhanced(coordinatesFront_data)
-        rod_103_id, rod_104_id = detect_main_rods_enhanced(coordinatesBottom_data)
-        rod_101_id, rod_102_id = detect_main_rods_enhanced(coordinatesOverhead_data)
 
 
         jiaodian_101,jiaodian_103 = get_jiaodian_on_ganjian(coordinatesFront_data,drawing_id, pj, rod_101_id,rod_103_id, yuzhi)
@@ -1066,6 +1108,9 @@ def trans(file_path, drawing_id, data1, drawing_type):
         }
         ganjian.append(new_ganjian)
 
+
+
+
    #===== J1 担架对称性生成 =====
     if drawing_type == "J1":
         for g in ganjian:
@@ -1076,6 +1121,7 @@ def trans(file_path, drawing_id, data1, drawing_type):
         for j in jiedian:
             if j.get("symmetry_type") == 2:
                 j["symmetry_type"] = 4
+
 
 def work(file_path, data, drawing_type):
     txt_count = count_txt_files(file_path)
